@@ -1,0 +1,2050 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1e3a5f" id="themeColor">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Maintenance Planneur">
+<title>Maintenance Planneur — Équipe &amp; Planning</title>
+<link rel="manifest" href="manifest-planneur.json">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
+
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface2: #eef1f5;
+  --navy: #1e3a5f;
+  --navy2: #2a4f7a;
+  --gold: #e8a020;
+  --gold2: #f5b840;
+  --text: #1a2332;
+  --text2: #5a6a7a;
+  --border: #dde3ea;
+  --danger: #d63031;
+  --success: #00b894;
+  --warning: #fdcb6e;
+  --info: #0984e3;
+  --shadow: 0 2px 12px rgba(30,58,95,0.08);
+  --shadow-lg: 0 8px 32px rgba(30,58,95,0.14);
+  --radius: 12px;
+  --safe-top: env(safe-area-inset-top,0px);
+  --safe-bottom: env(safe-area-inset-bottom,0px);
+}
+body.dark {
+  --bg: #0a1520;
+  --surface: #112030;
+  --surface2: #162840;
+  --navy: #1e3a5f;
+  --navy2: #2a4f7a;
+  --gold: #f0aa30;
+  --text: #e8eef5;
+  --text2: #7a9ab5;
+  --border: #1e3050;
+  --shadow: 0 2px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100dvh;overflow:hidden;font-size:14px;transition:background .2s,color .2s;}
+
+/* ── LAYOUT ── */
+.app{display:flex;height:100dvh;overflow:hidden;}
+.sidebar{width:270px;background:var(--navy);display:flex;flex-direction:column;flex-shrink:0;transition:transform .25s;z-index:20;}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.main-body{flex:1;display:flex;overflow:hidden;min-height:0;}
+
+/* ── SIDEBAR ── */
+.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.logo-title{font-family:'DM Serif Display',serif;font-size:20px;color:#fff;letter-spacing:-.3px;}
+.logo-title span{color:var(--gold);font-style:italic;}
+.logo-sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px;letter-spacing:.5px;text-transform:uppercase;}
+
+/* ── APP SWITCHER ── */
+.app-switcher{display:flex;gap:8px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.app-tile{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);cursor:pointer;text-decoration:none;transition:all .15s;}
+.app-tile:hover{background:rgba(255,255,255,0.12);}
+.app-tile.active{background:rgba(232,160,32,0.18);border-color:rgba(232,160,32,0.45);cursor:default;}
+.app-tile-icon{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-family:'DM Serif Display',serif;}
+.app-tile-label{font-size:10px;font-weight:600;color:rgba(255,255,255,0.7);text-align:center;line-height:1.2;}
+.app-tile.active .app-tile-label{color:#fff;}
+
+/* ── SIDEBAR NAV ── */
+.sidebar-nav{padding:10px 14px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.nav-item{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;color:rgba(255,255,255,0.75);font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s;}
+.nav-item:hover{background:rgba(255,255,255,0.08);color:#fff;}
+.nav-item.active{background:rgba(232,160,32,0.18);color:#fff;}
+
+/* ── TEAM ── */
+.sidebar-section-title{padding:14px 14px 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,0.4);display:flex;align-items:center;justify-content:space-between;}
+.team-count{background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border-radius:20px;padding:1px 8px;font-size:10px;font-weight:700;}
+.team-hint{padding:0 14px 6px;font-size:10.5px;color:rgba(255,255,255,0.35);line-height:1.4;}
+.team-list{overflow-y:auto;padding:4px 10px;flex:0 1 auto;max-height:32dvh;transition:max-height .2s;}
+.team-list.has-expanded{max-height:56dvh;}
+.team-list::-webkit-scrollbar{width:3px;}
+.team-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px;}
+.team-member{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;margin-bottom:3px;transition:background .15s;position:relative;cursor:pointer;border:1.5px solid transparent;}
+.team-member:hover{background:rgba(255,255,255,0.07);}
+.team-member.filtered{background:rgba(255,255,255,0.1);border-color:var(--member-c,var(--gold));}
+.member-avatar{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;}
+.member-info{flex:1;min-width:0;}
+.member-name{font-size:12.5px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.member-role{font-size:10.5px;color:rgba(255,255,255,0.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.member-del{background:none;border:none;color:rgba(255,255,255,0.3);cursor:pointer;font-size:15px;padding:4px 6px;border-radius:6px;opacity:0;transition:all .15s;flex-shrink:0;}
+.team-member:hover .member-del{opacity:1;}
+.member-del:hover{color:#fff;background:rgba(214,48,49,0.5);}
+.team-empty{padding:14px;text-align:center;font-size:11.5px;color:rgba(255,255,255,0.35);}
+
+.member-name{cursor:pointer;}
+.member-name:hover{text-decoration:underline;text-decoration-color:rgba(255,255,255,0.4);}
+.member-conge-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--gold);margin-left:3px;vertical-align:middle;}
+.member-conges-panel{background:rgba(0,0,0,0.18);border-radius:10px;padding:10px;margin:2px 0 8px;display:flex;flex-direction:column;gap:8px;}
+.conge-item{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.08);}
+.conge-item:last-of-type{border-bottom:none;}
+.conge-badge{font-size:9.5px;font-weight:700;color:#fff;padding:2px 7px;border-radius:20px;white-space:nowrap;flex-shrink:0;}
+.conge-dates{font-size:11px;color:rgba(255,255,255,0.7);flex:1;min-width:0;}
+.conge-del{background:none;border:none;color:rgba(255,255,255,0.35);cursor:pointer;font-size:14px;padding:2px 5px;border-radius:5px;flex-shrink:0;}
+.conge-del:hover{color:#fff;background:rgba(214,48,49,0.5);}
+.conge-empty{font-size:11px;color:rgba(255,255,255,0.35);text-align:center;padding:4px 0;}
+.conge-add{display:flex;flex-direction:column;gap:6px;padding-top:2px;}
+.cg-input{padding:7px 9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:7px;color:#fff;font-family:'Inter',sans-serif;font-size:12px;outline:none;color-scheme:dark;}
+.cg-input:focus{border-color:var(--gold);}
+.conge-add-dates{display:flex;align-items:center;gap:6px;}
+.conge-add-dates .cg-input{flex:1;min-width:0;}
+.conge-arrow{color:rgba(255,255,255,0.4);font-size:12px;flex-shrink:0;}
+.conge-add-btn{width:100%;justify-content:center;padding:8px;font-size:12px;}
+
+.add-member-wrap{padding:8px 14px 12px;}
+.add-member-btn{width:100%;padding:9px;background:rgba(255,255,255,0.08);border:1px dashed rgba(255,255,255,0.25);border-radius:9px;color:rgba(255,255,255,0.75);font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;}
+.add-member-btn:hover{background:rgba(255,255,255,0.14);color:#fff;border-color:rgba(255,255,255,0.4);}
+.add-member-form{display:none;flex-direction:column;gap:8px;background:rgba(0,0,0,0.18);border-radius:10px;padding:10px;margin-top:8px;}
+.add-member-form.open{display:flex;}
+.am-input{padding:8px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:7px;color:#fff;font-family:'Inter',sans-serif;font-size:12.5px;outline:none;}
+.am-input::placeholder{color:rgba(255,255,255,0.35);}
+.am-input:focus{border-color:var(--gold);}
+.am-actions{display:flex;gap:6px;margin-top:2px;}
+.am-actions .tb-btn{flex:1;justify-content:center;padding:7px;font-size:12px;}
+
+.sidebar-bottom{padding:12px 14px;border-top:1px solid rgba(255,255,255,0.08);display:flex;gap:8px;margin-top:auto;}
+.sb-btn{flex:1;padding:9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:rgba(255,255,255,0.7);font-family:'Inter',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:all .15s;}
+.sb-btn:hover{background:rgba(255,255,255,0.14);color:#fff;}
+
+/* ── TOP BAR ── */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;min-height:56px;display:flex;align-items:center;gap:10px;flex-shrink:0;box-shadow:var(--shadow);flex-wrap:wrap;}
+.topbar-title{font-size:16px;font-weight:700;color:var(--text);white-space:nowrap;}
+.topbar-sub{font-size:12px;color:var(--text2);font-weight:400;margin-left:6px;}
+.tb-btn{padding:7px 14px;border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:none;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.tb-btn:active{transform:scale(.97);}
+.tb-primary{background:var(--navy);color:#fff;}
+.tb-primary:hover{background:var(--navy2);}
+.tb-gold{background:var(--gold);color:#1a1a00;}
+.tb-gold:hover{background:var(--gold2);}
+.tb-ghost{background:var(--surface2);color:var(--text);}
+.tb-ghost:hover{background:var(--border);}
+.tb-danger{background:rgba(214,48,49,0.1);color:var(--danger);border:1px solid rgba(214,48,49,0.2);}
+.tb-danger:hover{background:var(--danger);color:#fff;}
+.tb-icon{width:34px;height:34px;border-radius:8px;background:var(--surface2);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text2);transition:all .15s;flex-shrink:0;position:relative;}
+.tb-icon:hover{background:var(--border);color:var(--text);}
+.tb-icon .tb-badge{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:9px;font-weight:700;border-radius:20px;padding:1px 5px;min-width:15px;text-align:center;}
+.menu-toggle{display:none;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px;line-height:1;}
+
+/* ── FILTER CHIP ── */
+.filter-chip-active{display:none;align-items:center;gap:7px;background:var(--surface2);border-radius:20px;padding:5px 6px 5px 12px;font-size:12px;font-weight:600;color:var(--text);}
+.filter-chip-active.show{display:flex;}
+.filter-chip-active button{background:var(--border);border:none;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);font-size:11px;}
+
+/* ── VIEW TABS ── */
+.view-tabs{display:flex;background:var(--surface2);border-radius:9px;padding:3px;gap:2px;}
+.view-tab{padding:6px 13px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.view-tab:hover{color:var(--text);}
+.view-tab.active{background:var(--navy);color:#fff;}
+
+/* ── JOURS EXTRA (planification multi-jours) ── */
+.day-check-list{display:flex;flex-direction:column;gap:4px;}
+.day-check{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text);transition:all .15s;}
+.day-check:hover{border-color:var(--navy2);}
+.day-check input{width:16px;height:16px;accent-color:var(--navy);cursor:pointer;flex-shrink:0;}
+.day-check.disabled{opacity:.45;cursor:not-allowed;}
+.day-check.disabled input{cursor:not-allowed;}
+
+/* ── MENU CONTEXTUEL (duplication) ── */
+.ctx-menu{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);z-index:400;display:none;overflow:hidden;min-width:190px;}
+.ctx-menu.open{display:block;}
+.ctx-menu-item{padding:10px 14px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;display:flex;align-items:center;gap:8px;transition:background .1s;}
+.ctx-menu-item:hover{background:var(--surface2);}
+
+.dup-member-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border);cursor:pointer;}
+.dup-member-row:last-child{border-bottom:none;}
+.dup-member-row input{width:16px;height:16px;accent-color:var(--navy);cursor:pointer;}
+
+/* ── NAV ── */
+.cal-nav{display:flex;align-items:center;gap:4px;margin-left:auto;}
+.cal-period-label{font-size:13.5px;font-weight:700;color:var(--text);min-width:150px;text-align:center;text-transform:capitalize;}
+
+/* ── CONTENT ── */
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px;min-width:0;}
+.content::-webkit-scrollbar{width:5px;}
+.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* ── BACKLOG PANEL ── */
+.backlog-panel{width:260px;flex-shrink:0;border-left:1px solid var(--border);background:var(--surface);overflow-y:auto;padding:16px 14px;transition:transform .25s;}
+.backlog-panel::-webkit-scrollbar{width:4px;}
+.backlog-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+.backlog-header{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin-bottom:4px;display:flex;align-items:center;gap:8px;}
+.backlog-sub{font-size:10.5px;color:var(--text2);margin-bottom:12px;line-height:1.4;}
+.backlog-card{background:var(--bg);border:1px solid var(--border);border-left:4px solid var(--navy);border-radius:9px;padding:9px 10px;margin-bottom:8px;cursor:grab;transition:all .15s;}
+.backlog-card:hover{border-color:var(--navy);transform:translateX(-2px);box-shadow:var(--shadow);}
+.backlog-card:active{cursor:grabbing;}
+.backlog-card-title{font-size:12px;font-weight:600;margin-bottom:5px;line-height:1.3;}
+.backlog-card-meta{display:flex;flex-direction:column;gap:3px;}
+.backlog-empty{font-size:11.5px;color:var(--text2);text-align:center;padding:24px 10px;line-height:1.5;}
+
+/* ── MEMBER BADGE (shared) ── */
+.member-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--text2);}
+.m-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.m-avatar-mini{width:16px;height:16px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;flex-shrink:0;}
+
+/* ── STATUS BADGES ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;}
+.badge-planifiee{background:rgba(9,132,227,0.2);color:#0984e3;}
+.badge-en_cours{background:rgba(232,160,32,0.25);color:#c8880a;}
+.badge-terminee{background:rgba(0,184,148,0.2);color:#00a07a;}
+body.dark .badge-planifiee{background:rgba(9,132,227,0.3);color:#4db8ff;}
+body.dark .badge-en_cours{background:rgba(232,160,32,0.3);color:var(--gold);}
+body.dark .badge-terminee{background:rgba(0,184,148,0.25);color:#00d4a8;}
+
+/* ── DAY VIEW ── */
+.day-agenda{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:8px;}
+.day-empty{text-align:center;padding:60px 20px;color:var(--text2);}
+.day-empty-icon{font-size:38px;margin-bottom:10px;}
+.day-task{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;gap:14px;align-items:flex-start;box-shadow:var(--shadow);border-left:4px solid var(--navy);transition:transform .15s;cursor:grab;}
+.day-task:hover{transform:translateX(3px);}
+.day-task:active{cursor:grabbing;}
+.day-task-time{font-size:13px;font-weight:700;color:var(--text);width:52px;flex-shrink:0;padding-top:1px;}
+.day-task-time small{display:block;font-size:10.5px;font-weight:500;color:var(--text2);}
+.day-task-body{flex:1;min-width:0;cursor:pointer;}
+.day-task-title{font-size:14px;font-weight:600;margin-bottom:5px;}
+.day-task-desc{font-size:12px;color:var(--text2);line-height:1.4;margin-bottom:8px;white-space:pre-line;}
+.day-task-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+.day-task-del{background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;padding:4px 6px;border-radius:6px;flex-shrink:0;transition:all .15s;}
+.day-task-del:hover{color:#fff;background:var(--danger);}
+
+/* ── WEEK VIEW ── */
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+.week-day-col{background:var(--surface);border:1px solid var(--border);border-radius:12px;min-height:220px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;transition:all .15s;}
+.week-day-col.drag-over{border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,95,0.15);}
+.week-day-col.ferie{background:rgba(214,48,49,0.05);border-color:rgba(214,48,49,0.25);}
+.week-day-col.vacances{background:rgba(0,184,148,0.05);}
+.week-day-col.weekend-off{background:repeating-linear-gradient(135deg,var(--surface2),var(--surface2) 7px,var(--bg) 7px,var(--bg) 14px);}
+.week-day-head{padding:10px;border-bottom:1px solid var(--border);text-align:center;cursor:pointer;transition:background .15s;}
+.week-day-head:hover{background:var(--bg);}
+.week-day-head.today{background:rgba(232,160,32,0.12);}
+.week-day-col.ferie .week-day-head,.week-day-col.weekend-off .week-day-head{cursor:not-allowed;}
+.week-day-name{font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.5px;}
+.week-day-num{font-size:17px;font-weight:700;color:var(--text);margin-top:2px;}
+.week-day-tasks{padding:8px;display:flex;flex-direction:column;gap:6px;flex:1;overflow-y:auto;min-height:60px;}
+.week-task-chip{background:var(--bg);border-radius:7px;padding:6px 8px;font-size:11px;cursor:grab;border-left:3px solid var(--navy);overflow:hidden;flex-shrink:0;}
+.week-task-chip:active{cursor:grabbing;}
+.week-task-chip-time{font-weight:700;color:var(--text);display:flex;align-items:center;gap:5px;justify-content:space-between;}
+.week-task-chip-title{color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* ── MONTH VIEW ── */
+.month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+.month-dow{font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--text2);text-align:center;padding-bottom:6px;letter-spacing:.5px;}
+.month-cell{background:var(--surface);border:1px solid var(--border);border-radius:10px;min-height:92px;padding:6px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:3px;}
+.month-cell:hover{border-color:var(--navy);}
+.month-cell.outside{opacity:.35;}
+.month-cell.today{border-color:var(--gold);border-width:2px;background:rgba(232,160,32,0.06);}
+.month-cell.drag-over{border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,95,0.15);background:rgba(30,58,95,0.05);}
+.month-cell.ferie{background:rgba(214,48,49,0.08);border-color:rgba(214,48,49,0.3);cursor:not-allowed;}
+.month-cell.vacances{background:rgba(0,184,148,0.08);}
+.month-cell.weekend-off{background:repeating-linear-gradient(135deg,var(--surface2),var(--surface2) 6px,var(--bg) 6px,var(--bg) 12px);cursor:not-allowed;}
+.month-cell.weekend-off .month-cell-num{color:var(--text2);}
+.month-cell-num{font-size:12px;font-weight:700;color:var(--text);}
+.month-chip{font-size:9.5px;font-weight:600;padding:2px 5px;border-radius:5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab;}
+.month-chip:active{cursor:grabbing;}
+.month-chip.m-chip-md{font-size:11.5px;padding:5px 8px;border-radius:6px;}
+.month-chip.m-chip-lg{font-size:13px;padding:7px 10px;border-radius:7px;}
+.month-more{font-size:9.5px;color:var(--text2);font-weight:600;padding:1px 5px;}
+
+/* ── YEAR VIEW ── */
+.year-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.mini-month{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;box-shadow:var(--shadow);}
+.mini-month-title{font-size:12.5px;font-weight:700;color:var(--text);text-transform:capitalize;margin-bottom:8px;cursor:pointer;text-align:center;}
+.mini-month-title:hover{color:var(--navy2);}
+.mini-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+.mini-dow{font-size:8px;color:var(--text2);text-align:center;font-weight:700;}
+.mini-day{font-size:9.5px;text-align:center;padding:3px 0;border-radius:4px;color:var(--text2);cursor:pointer;position:relative;}
+.mini-day:hover{background:var(--bg);}
+.mini-day.outside{opacity:0;pointer-events:none;}
+.mini-day.weekend-off{background:var(--surface2);opacity:.5;cursor:not-allowed;}
+.mini-day.today{background:var(--gold);color:#1a1a00;font-weight:700;}
+.mini-day.ferie{background:rgba(214,48,49,0.35);color:#fff;font-weight:700;}
+.mini-day.vacances{background:rgba(0,184,148,0.25);}
+.mini-day.today.ferie{background:var(--danger);}
+.mini-day.has-task::after{content:'';position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:var(--navy2);}
+.mini-day.today.has-task::after{background:#1a1a00;}
+
+/* ── FÉRIÉS / VACANCES ── */
+.day-ferie-banner{background:rgba(214,48,49,0.1);color:#d63031;border:1px solid rgba(214,48,49,0.25);padding:10px 14px;border-radius:10px;font-size:12.5px;font-weight:600;}
+.day-vacances-banner{background:rgba(0,184,148,0.1);color:#00a07a;border:1px solid rgba(0,184,148,0.25);padding:10px 14px;border-radius:10px;font-size:12.5px;font-weight:600;}
+.day-conge-banner{background:rgba(108,92,231,0.1);color:#6c5ce7;border:1px solid rgba(108,92,231,0.25);padding:10px 14px;border-radius:10px;font-size:12.5px;font-weight:600;}
+body.dark .week-day-col.ferie{background:rgba(214,48,49,0.12);}
+body.dark .week-day-col.vacances{background:rgba(0,184,148,0.12);}
+body.dark .week-day-col.conge{background:rgba(108,92,231,0.14);}
+body.dark .month-cell.ferie{background:rgba(214,48,49,0.16);}
+body.dark .month-cell.vacances{background:rgba(0,184,148,0.16);}
+body.dark .month-cell.conge{background:rgba(108,92,231,0.18);}
+body.dark .day-ferie-banner{background:rgba(214,48,49,0.2);color:#ff6b6b;}
+body.dark .day-vacances-banner{background:rgba(0,184,148,0.2);color:#00d4a8;}
+body.dark .day-conge-banner{background:rgba(108,92,231,0.25);color:#a29bfe;}
+
+.week-day-col.conge{background:rgba(108,92,231,0.06);border-color:rgba(108,92,231,0.25);}
+.month-cell.conge{background:rgba(108,92,231,0.08);border-color:rgba(108,92,231,0.3);}
+
+/* ── PHOTOS (liées depuis MaintenancePro) ── */
+.task-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;}
+.task-photo-thumb{aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--surface2);border:1px solid var(--border);cursor:pointer;position:relative;}
+.task-photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.task-photo-thumb.pdf-thumb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px;text-align:center;}
+.task-photo-thumb.pdf-thumb .pdf-icon{font-size:22px;}
+.task-photo-thumb.pdf-thumb .pdf-name{font-size:9px;color:var(--text2);line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all;}
+.task-doc-remove{position:absolute;top:3px;right:3px;background:rgba(0,0,0,0.6);border:none;border-radius:50%;width:20px;height:20px;color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;}
+.task-doc-remove:hover{background:var(--danger);}
+.photo-badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text2);}
+
+/* ── VUE INTERVENTIONS (TABLEAU) ── */
+.int-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;}
+.int-filter-group{display:flex;flex-direction:column;gap:4px;min-width:150px;}
+.int-filter-group label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);}
+.int-filter-group input,.int-filter-group select{padding:8px 11px;border:1.5px solid var(--border);border-radius:8px;font-family:'Inter',sans-serif;font-size:12.5px;color:var(--text);background:var(--surface);outline:none;transition:border-color .2s;}
+.int-filter-group input:focus,.int-filter-group select:focus{border-color:var(--navy);}
+.int-date-range{display:flex;align-items:center;gap:6px;}
+.int-date-range input{flex:1;min-width:0;}
+.int-count{font-size:12px;color:var(--text2);margin-bottom:10px;}
+.int-table-scroll{overflow-x:auto;border-radius:12px;box-shadow:var(--shadow);}
+.int-table{width:100%;border-collapse:collapse;background:var(--surface);font-size:12.5px;min-width:760px;}
+.int-table th{background:var(--navy);color:#fff;text-align:left;padding:10px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;white-space:nowrap;}
+.int-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.int-table tbody tr{cursor:pointer;transition:background .15s;}
+.int-table tbody tr:hover td{background:var(--bg);}
+.int-table tbody tr:last-child td{border-bottom:none;}
+.int-empty{text-align:center;padding:50px 20px;color:var(--text2);}
+
+/* ── FORM / MODAL ── */
+.field-group{display:flex;flex-direction:column;gap:5px;}
+.field-group.full{grid-column:1/-1;}
+.field-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text2);display:flex;align-items:center;justify-content:space-between;}
+.field-label-link{font-size:10px;text-transform:none;font-weight:600;color:var(--navy2);cursor:pointer;letter-spacing:0;}
+.field-input,.field-select,.field-textarea{padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Inter',sans-serif;font-size:14px;color:var(--text);background:var(--bg);outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}
+.field-input:focus,.field-select:focus,.field-textarea:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,95,0.1);}
+.field-select{cursor:pointer;}
+.field-textarea{resize:vertical;min-height:70px;font-family:'Inter',sans-serif;}
+.fields-grid{display:grid;gap:14px;grid-template-columns:1fr 1fr;}
+
+.shift-btns-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;}
+.shift-btn{flex-direction:column;gap:2px;padding:9px 8px;white-space:normal;line-height:1.3;}
+.shift-btn small{font-size:10.5px;font-weight:500;opacity:.75;}
+
+.tmembre-dropdown{position:relative;}
+.tmembre-dropdown-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;cursor:pointer;transition:border-color .2s;}
+.tmembre-dropdown-btn:hover{border-color:var(--navy2);}
+.tmembre-dropdown-arrow{color:var(--text2);font-size:11px;flex-shrink:0;}
+.tmembre-list{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:60;display:flex;flex-direction:column;gap:2px;max-height:220px;overflow-y:auto;border:1.5px solid var(--border);border-radius:9px;padding:4px;background:var(--surface);box-shadow:var(--shadow-lg);}
+.tmembre-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;cursor:pointer;transition:background .1s;}
+.tmembre-row:hover{background:var(--surface2);}
+.tmembre-row input{width:16px;height:16px;accent-color:var(--navy);cursor:pointer;flex-shrink:0;}
+
+.toast{position:fixed;bottom:24px;right:24px;background:var(--text);color:var(--bg);padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);transform:translateY(60px);opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);z-index:500;display:flex;align-items:center;gap:8px;max-width:340px;}
+.toast.show{transform:translateY(0);opacity:1;}
+
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+.modal-bg.open{display:flex;}
+.modal-box{background:var(--surface);border-radius:16px;padding:24px;width:min(480px,95vw);box-shadow:var(--shadow-lg);animation:scaleIn .2s cubic-bezier(.34,1.2,.64,1);max-height:90dvh;overflow-y:auto;overflow-x:hidden;}
+.modal-box.wide{width:min(600px,95vw);}
+@keyframes scaleIn{from{opacity:0;transform:scale(.95);}to{opacity:1;transform:scale(1);}}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:16px;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;align-items:center;}
+.modal-actions .spacer{flex:1;}
+
+/* ── MOBILE ── */
+.sidebar-overlay,.backlog-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:15;}
+@media(max-width:900px){
+  .sidebar{position:fixed;top:0;left:0;height:100dvh;transform:translateX(-100%);z-index:20;width:270px;}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-overlay.open{display:block;}
+  .menu-toggle{display:block;}
+  .content{padding:12px;}
+  .week-grid{grid-template-columns:1fr;}
+  .year-grid{grid-template-columns:repeat(2,1fr);}
+  .fields-grid{grid-template-columns:1fr;}
+  .cal-period-label{min-width:auto;}
+  .topbar{padding:0 12px;}
+  .backlog-panel{position:fixed;top:0;right:0;height:100dvh;width:270px;transform:translateX(100%);z-index:20;}
+  .backlog-panel.open{transform:translateX(0);}
+  .backlog-overlay.open{display:block;}
+}
+@media(max-width:1150px) and (min-width:901px){
+  .year-grid{grid-template-columns:repeat(3,1fr);}
+}
+
+.fade-in{animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-title">Maintenance<span>Planneur</span></div>
+      <div class="logo-sub">Équipe &amp; planification</div>
+    </div>
+
+    <div class="app-switcher">
+      <a class="app-tile" href="index.html" onclick="return openApp(event,'index.html')" title="Ouvrir MaintenancePro">
+        <div class="app-tile-icon" style="background:var(--gold);color:#1a1a00;">M</div>
+        <div class="app-tile-label">MaintenancePro</div>
+      </a>
+      <div class="app-tile active" title="Application actuelle">
+        <div class="app-tile-icon" style="background:var(--info);color:#fff;">P</div>
+        <div class="app-tile-label">Planneur</div>
+      </div>
+    </div>
+
+    <div class="sidebar-nav">
+      <div class="nav-item active" id="navPlanning" onclick="showPlanningView()">🗓️ Planning</div>
+      <div class="nav-item" id="navInterventions" onclick="showInterventionsView()">📋 Interventions</div>
+    </div>
+
+    <div class="sidebar-section-title">Équipe <span class="team-count" id="teamCount">0</span></div>
+    <div class="team-hint">Cliquez un nom pour filtrer son planning</div>
+    <div class="team-list" id="teamList"></div>
+    <div class="add-member-wrap">
+      <button class="add-member-btn" id="addMemberToggle" onclick="toggleAddMemberForm()">＋ Ajouter un membre</button>
+      <div class="add-member-form" id="addMemberForm">
+        <input class="am-input" id="amNom" placeholder="Nom complet" maxlength="40">
+        <input class="am-input" id="amRole" placeholder="Rôle (ex: Électricien)" maxlength="30">
+        <div class="am-actions">
+          <button class="tb-btn tb-ghost" onclick="toggleAddMemberForm()">Annuler</button>
+          <button class="tb-btn tb-gold" onclick="addMember()">Ajouter</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <button class="sb-btn" style="flex:0 0 auto;" onclick="toggleDark()" id="darkBtn" title="Mode sombre">🌙</button>
+      <button class="sb-btn" style="flex:0 0 auto;" onclick="openSettings()" title="Paramètres">⚙️</button>
+      <button class="sb-btn" onclick="openTaskModal()" title="Nouvelle intervention">＋ Intervention</button>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <div class="topbar" id="topbar">
+      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <div class="topbar-title" id="topbarTitleText">Planning<span class="topbar-sub" id="topbarSub"></span></div>
+      <div class="filter-chip-active" id="filterChip"><span id="filterChipLabel"></span><button onclick="clearFilter()" title="Retirer le filtre">✕</button></div>
+      <div class="cal-controls" id="calControls" style="display:contents;">
+        <div class="view-tabs" id="viewTabs">
+          <div class="view-tab" data-view="jour" onclick="setView('jour')">Jour</div>
+          <div class="view-tab" data-view="semaine" onclick="setView('semaine')">Semaine</div>
+          <div class="view-tab" data-view="mois" onclick="setView('mois')">Mois</div>
+          <div class="view-tab" data-view="annee" onclick="setView('annee')">Année</div>
+        </div>
+        <div class="cal-nav">
+          <button class="tb-icon" onclick="navPeriod(-1)" title="Précédent">‹</button>
+          <div class="cal-period-label" id="periodLabel"></div>
+          <button class="tb-icon" onclick="navPeriod(1)" title="Suivant">›</button>
+          <button class="tb-btn tb-ghost" onclick="goToday()">Aujourd'hui</button>
+          <button class="tb-btn tb-ghost" onclick="exportWeekPDF()" title="Exporter le planning de la semaine en cours en PDF">📄 PDF semaine</button>
+          <button class="tb-icon" onclick="toggleBacklog()" title="Interventions non planifiées">🗒️<span class="tb-badge" id="backlogBadge" style="display:none;">0</span></button>
+          <button class="tb-btn tb-gold" onclick="openTaskModal()">＋ Intervention</button>
+        </div>
+      </div>
+    </div>
+    <div class="main-body">
+      <div class="content" id="mainContent"></div>
+      <div class="backlog-overlay" id="backlogOverlay" onclick="toggleBacklog()"></div>
+      <aside class="backlog-panel" id="backlogPanel">
+        <div class="backlog-header">🗒️ Non planifiées <span class="team-count" id="backlogCount">0</span></div>
+        <div class="backlog-sub">Glissez une carte sur un jour du calendrier pour la planifier, ou cliquez pour l'éditer.</div>
+        <div id="backlogList"></div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- MODAL CONFIRM -->
+<div class="modal-bg" id="confirmModal">
+  <div class="modal-box">
+    <div class="modal-title" id="confirmTitle">Confirmer</div>
+    <div id="confirmMsg" style="font-size:14px;color:var(--text2);line-height:1.5;"></div>
+    <div class="modal-actions">
+      <button class="tb-btn tb-ghost" onclick="closeConfirm()">Annuler</button>
+      <button class="tb-btn" id="confirmOkBtn" style="background:var(--danger);color:#fff;">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PARAMÈTRES -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal-box">
+    <div class="modal-title">⚙️ Paramètres</div>
+
+    <div style="margin-bottom:22px;">
+      <div style="font-weight:600;font-size:13px;color:var(--text2);margin-bottom:8px;">Apparence</div>
+      <div style="display:flex;gap:8px;">
+        <button class="tb-btn tb-ghost" id="themeLightBtn" style="flex:1;justify-content:center;" onclick="setTheme('light')">☀️ Clair</button>
+        <button class="tb-btn tb-ghost" id="themeDarkBtn" style="flex:1;justify-content:center;" onclick="setTheme('dark')">🌙 Sombre</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:22px;">
+      <div style="font-weight:600;font-size:13px;color:var(--text2);margin-bottom:8px;">Planification</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 12px;">
+        <input type="checkbox" id="weekendLockToggle" checked onchange="toggleWeekendLock(this.checked)" style="width:17px;height:17px;accent-color:var(--navy);cursor:pointer;flex-shrink:0;">
+        🔒 Verrouiller le week-end (samedi et dimanche grisés, non planifiables)
+      </label>
+    </div>
+
+    <div>
+      <div style="font-weight:600;font-size:13px;color:var(--text2);margin-bottom:8px;">Sauvegarde des données</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;">Exportez un fichier JSON de secours (équipe, planning, congés) ou restaurez une sauvegarde précédente. L'import remplace les données actuelles.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="tb-btn tb-gold" style="flex:1;justify-content:center;" onclick="exportData()">⬇️ Exporter</button>
+        <button class="tb-btn tb-ghost" style="flex:1;justify-content:center;" onclick="document.getElementById('importFileInput').click()">⬆️ Importer</button>
+      </div>
+      <input type="file" id="importFileInput" accept="application/json" style="display:none;" onchange="importDataFile(this)">
+    </div>
+
+    <div class="modal-actions">
+      <button class="tb-btn tb-ghost" onclick="closeSettings()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL INTERVENTION (création / édition) -->
+<div class="modal-bg" id="taskModal">
+  <div class="modal-box wide">
+    <div class="modal-title" id="taskModalTitle">Nouvelle intervention</div>
+    <div class="fields-grid">
+      <div class="field-group full">
+        <div class="field-label">Titre</div>
+        <input class="field-input" id="tTitre" placeholder="Ex: Réparation fuite robinetterie" maxlength="80">
+      </div>
+      <div class="field-group full">
+        <div class="field-label">Lieu</div>
+        <input class="field-input" id="tLieu" placeholder="Ex: Bâtiment A - RDC" maxlength="60">
+      </div>
+      <div class="field-group full">
+        <div class="field-label">Description</div>
+        <textarea class="field-textarea" id="tDescription" placeholder="Précisions, consignes, détails de l'intervention..." maxlength="2000"></textarea>
+      </div>
+      <div class="field-group full" id="tMembreGroup">
+        <div class="field-label">Membre(s) assigné(s) <span class="field-label-link" id="tMembreHint"></span></div>
+        <div class="tmembre-dropdown">
+          <button type="button" class="tmembre-dropdown-btn" id="tMembreDropdownBtn" onclick="toggleMembreDropdown(event)">
+            <span id="tMembreDropdownLabel">Sélectionner…</span>
+            <span class="tmembre-dropdown-arrow">▾</span>
+          </button>
+          <div class="tmembre-list" id="tMembreList" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Statut</div>
+        <select class="field-select" id="tStatut">
+          <option value="planifiee">Planifiée</option>
+          <option value="en_cours">En cours</option>
+          <option value="terminee">Terminée</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <div class="field-label">Date <span class="field-label-link" onclick="document.getElementById('tDate').value='';renderExtraDaysChips();">Retirer (non planifiée)</span></div>
+        <input class="field-input" type="date" id="tDate" onchange="renderExtraDaysChips()">
+      </div>
+      <div class="field-group">
+        <div class="field-label">Heure <span style="font-weight:500;text-transform:none;">(entre 08:00 et 17:00)</span></div>
+        <input class="field-input" type="time" id="tHeure" value="09:00" min="08:00" max="17:00">
+      </div>
+      <div class="field-group full">
+        <div class="field-label">Créneaux rapides</div>
+        <div class="shift-btns-grid">
+          <button type="button" class="tb-btn tb-ghost shift-btn" onclick="setShift('matin')">🌅 Matin<small>8h à 12h</small></button>
+          <button type="button" class="tb-btn tb-ghost shift-btn" onclick="setShift('soir')">🌇 Après-midi<small>13h à 17h</small></button>
+          <button type="button" class="tb-btn tb-ghost shift-btn" onclick="setShift('journee')">☀️ Journée<small>8h à 17h</small></button>
+        </div>
+      </div>
+      <div class="field-group full" id="tExtraDaysGroup">
+        <div class="field-label">Planifier aussi sur d'autres jours de la semaine <span class="field-label-link" id="tExtraDaysClear" onclick="clearExtraDays()">Effacer</span></div>
+        <div id="tExtraDaysChips" class="day-check-list"></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;">Crée une copie identique sur chaque jour coché, en plus de la date choisie ci-dessus.</div>
+      </div>
+      <div class="field-group full">
+        <div class="field-label">Durée</div>
+        <select class="field-select" id="tDuree">
+          <option value="30">30 min</option>
+          <option value="60" selected>1 h</option>
+          <option value="90">1 h 30</option>
+          <option value="120">2 h</option>
+          <option value="150">2 h 30</option>
+          <option value="180">3 h</option>
+          <option value="210">3 h 30</option>
+          <option value="240">4 h</option>
+          <option value="270">4 h 30</option>
+          <option value="300">5 h</option>
+          <option value="330">5 h 30</option>
+          <option value="360">6 h</option>
+          <option value="390">6 h 30</option>
+          <option value="420">7 h</option>
+          <option value="450">7 h 30</option>
+          <option value="480">8 h</option>
+          <option value="540">9 h (journée 8h-17h)</option>
+        </select>
+      </div>
+      <div class="field-group full" id="tPhotosGroup" style="display:none;">
+        <div class="field-label">📷 Photos (MaintenancePro)</div>
+        <div class="task-photos-grid" id="tPhotosGrid"></div>
+      </div>
+      <div class="field-group full">
+        <div class="field-label">📎 Photos &amp; PDF joints</div>
+        <div class="task-photos-grid" id="tDocsGrid"></div>
+        <button type="button" class="tb-btn tb-ghost" style="margin-top:8px;justify-content:center;" onclick="document.getElementById('tDocsInput').click()">＋ Ajouter des photos / PDF</button>
+        <input type="file" id="tDocsInput" accept="image/*,application/pdf" multiple style="display:none;" onchange="addModalDocuments(this.files); this.value='';">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="tb-btn tb-danger" id="taskDeleteBtn" onclick="deleteFromModal()" style="display:none;">🗑️ Supprimer</button>
+      <div class="spacer"></div>
+      <button class="tb-btn tb-ghost" onclick="closeTaskModal()">Annuler</button>
+      <button class="tb-btn tb-primary" onclick="saveTask()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MENU CONTEXTUEL (clic droit sur une intervention de la semaine) -->
+<div class="ctx-menu" id="taskCtxMenu">
+  <div class="ctx-menu-item" onclick="openDuplicateForMembers()">📋 Dupliquer pour un ou plusieurs membres…</div>
+  <div class="ctx-menu-item" onclick="openDuplicateForDays()">📆 Dupliquer sur plusieurs jours de la semaine…</div>
+</div>
+
+<!-- MODAL DUPLICATION MULTI-MEMBRES -->
+<div class="modal-bg" id="dupModal">
+  <div class="modal-box">
+    <div class="modal-title">📋 Dupliquer l'intervention</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:14px;">Une copie sera créée, au même jour et à la même heure, pour chaque membre coché ci-dessous.</div>
+    <div id="dupMembersList"></div>
+    <div class="modal-actions">
+      <button class="tb-btn tb-ghost" onclick="closeDupModal()">Annuler</button>
+      <button class="tb-btn tb-primary" onclick="confirmDuplicate()">📋 Dupliquer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DUPLICATION MULTI-JOURS -->
+<div class="modal-bg" id="dupDaysModal">
+  <div class="modal-box">
+    <div class="modal-title">📆 Dupliquer sur plusieurs jours</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-bottom:14px;">Une copie sera créée, au même membre et à la même heure, pour chaque jour coché ci-dessous.</div>
+    <div id="dupDaysList" class="day-check-list"></div>
+    <div class="modal-actions">
+      <button class="tb-btn tb-ghost" onclick="closeDupDaysModal()">Annuler</button>
+      <button class="tb-btn tb-primary" onclick="confirmDuplicateDays()">📆 Dupliquer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════
+const TEAM_KEY = 'planneur_equipe';
+const TASKS_KEY = 'planneur_interventions';
+const SEED_VERSION = 6;
+const COLORS = ['#e8a020','#0984e3','#00b894','#d63031','#6c5ce7','#e17055','#00cec9','#fd79a8','#2a4f7a','#fdcb6e'];
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2); }
+// Échappe le HTML pour tout texte pouvant provenir d'une saisie utilisateur, d'un fichier joint
+// ou synchronisé depuis MaintenancePro, avant insertion via innerHTML.
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function pad(n){ return n<10?'0'+n:''+n; }
+function dstr(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+
+const INITIAL_TEAM = [
+  {id:'m1', nom:'Yohann Aubert', role:'Chef d\'équipe', couleur:COLORS[0]},
+  {id:'m2', nom:'Karim Haddad', role:'Électricien', couleur:COLORS[1]},
+  {id:'m3', nom:'Sophie Marchand', role:'Plombière', couleur:COLORS[2]},
+  {id:'m4', nom:'Lucas Petit', role:'Peintre', couleur:COLORS[3]},
+];
+const EXTRA_TEAM = [
+  {id:'m5', nom:'Nadia Bensaid', role:'Technicienne polyvalente', couleur:COLORS[4]},
+  {id:'m6', nom:'Thomas Girard', role:'Menuisier', couleur:COLORS[5]},
+  {id:'m7', nom:'Julie Perrin', role:'Agente d\'entretien', couleur:COLORS[6]},
+];
+
+const DEMO_TITLES = [
+  {titre:'Vérification installation électrique', lieu:'Bâtiment A', description:'Contrôle général du tableau électrique et des lignes : serrage des bornes, test des disjoncteurs différentiels et vérification de la mise à la terre.'},
+  {titre:'Réparation fuite robinetterie', lieu:'Sanitaires RDC', description:'Fuite signalée sous le lavabo du sanitaire RDC. Prévoir remplacement du joint et vérification du flexible d\'alimentation avant intervention.'},
+  {titre:'Remplacement dalles faux plafond', lieu:'Couloir 1er étage', description:'Plusieurs dalles tachées suite à une infiltration. Remplacement à l\'identique et vérification de l\'origine de l\'humidité avant repose.'},
+  {titre:'Entretien chaudière', lieu:'Chaufferie', description:'Entretien annuel réglementaire : nettoyage du brûleur, contrôle de la combustion et purge du circuit avant la saison de chauffe.'},
+  {titre:'Peinture murs', lieu:'Salle 12', description:'Rafraîchissement de la peinture suite à des marques et éclats sur les murs. Rebouchage des trous avant mise en peinture (2 couches).'},
+  {titre:'Contrôle extincteurs', lieu:'Ensemble du site', description:'Vérification annuelle de l\'ensemble des extincteurs du site : pression, date de péremption et accessibilité, avec mise à jour des étiquettes de contrôle.'},
+  {titre:'Débouchage canalisation', lieu:'Cuisine', description:'Évacuation de l\'évier cuisine très lente. Débouchage mécanique à prévoir puis passage d\'un produit d\'entretien préventif.'},
+  {titre:'Remplacement néons LED', lieu:'Gymnase', description:'Plusieurs tubes néon grillés ou clignotants dans le gymnase. Remplacement par des tubes LED pour réduire la consommation.'},
+  {titre:'Réglage porte automatique', lieu:'Entrée principale', description:'La porte automatique de l\'entrée principale se ferme trop vite et coince par moments. Réglage de la vitesse et de la détection.'},
+  {titre:'Nettoyage haute pression', lieu:'Cour extérieure', description:'Nettoyage au karcher des sols de la cour extérieure (mousse et traces noires) avant application éventuelle d\'un traitement anti-mousse.'},
+  {titre:'Vérification alarme incendie', lieu:'Bâtiment B', description:'Test complet du système de détection incendie du bâtiment B : déclencheurs manuels, sirènes et report d\'alarme centrale.'},
+  {titre:'Réparation volet roulant', lieu:'Bureau administration', description:'Volet roulant bloqué à mi-course dans le bureau administration. Vérification du moteur et des sangles, remplacement si nécessaire.'},
+];
+const DEMO_OFFSETS = [-4,-2,0,0,1,3,5,8,10,14,-25,35];
+const DEMO_HEURES = ['08:00','09:30','10:00','13:00','14:00','08:30','15:00','09:00','11:00','14:30','10:30','16:00'];
+const DEMO_DUREES = [60,90,120,60,180,45,60,90,30,120,60,90];
+const DEMO_STATUTS = ['planifiee','planifiee','en_cours','planifiee','terminee','planifiee','en_cours','planifiee','planifiee','terminee','en_cours','planifiee'];
+
+const BACKLOG_TITLES = [
+  {titre:'Réparation store banne', lieu:'Cour intérieure', description:'Store banne bloqué en position ouverte suite à un coup de vent. Vérifier le mécanisme d\'enroulement et les fixations murales.'},
+  {titre:'Installation détecteur de fumée', lieu:'Bureau 3', description:'Absence de détecteur de fumée dans le bureau 3, non conforme. Pose d\'un détecteur autonome et test de fonctionnement.'},
+  {titre:'Changement joints fenêtres', lieu:'Salle 5', description:'Joints d\'étanchéité des fenêtres usés, courants d\'air ressentis en hiver. Remplacement complet des joints périphériques.'},
+  {titre:'Réparation serrure', lieu:'Local technique', description:'Serrure du local technique difficile à manœuvrer, clé qui force. Nettoyage du barillet ou remplacement si l\'usure est trop avancée.'},
+  {titre:'Peinture rambarde extérieure', lieu:'Escalier secours', description:'Rambarde métallique de l\'escalier de secours rouillée par endroits. Ponçage, traitement antirouille puis mise en peinture.'},
+  {titre:'Contrôle groupe électrogène', lieu:'Local technique', description:'Contrôle périodique du groupe électrogène de secours : niveau de carburant, batterie de démarrage et essai en charge.'},
+  {titre:'Remplacement robinet', lieu:'Vestiaires', description:'Robinet des vestiaires qui goutte en continu, joint probablement usé. Remplacement du robinet mitigeur.'},
+  {titre:'Nettoyage gouttières', lieu:'Toiture Bâtiment A', description:'Gouttières encombrées de feuilles provoquant des débordements. Nettoyage complet et vérification de l\'écoulement des descentes.'},
+  {titre:'Réparation chauffe-eau', lieu:'Sanitaires étage', description:'Chauffe-eau des sanitaires de l\'étage ne produit plus d\'eau chaude. Diagnostic de la résistance et du thermostat.'},
+  {titre:'Pose barres anti-panique', lieu:'Issue de secours', description:'Issue de secours équipée d\'une poignée classique non conforme. Installation de barres anti-panique aux normes ERP.'},
+  {titre:'Diagnostic amiante', lieu:'Sous-sol', description:'Suspicion de matériaux amiantés dans les revêtements du sous-sol avant travaux. Faire réaliser un diagnostic par un organisme agréé.'},
+  {titre:'Révision portail automatique', lieu:'Entrée véhicules', description:'Portail automatique de l\'entrée véhicules lent à l\'ouverture et bruyant. Graissage des rails et vérification du moteur.'},
+];
+
+function genDemoTasks(teamArr){
+  const today = new Date();
+  return DEMO_TITLES.map((t,i)=>{
+    const d = new Date(today); d.setDate(d.getDate()+DEMO_OFFSETS[i]);
+    const cd = new Date(today); cd.setDate(cd.getDate()-(i*3+2));
+    return {
+      id:uid(), titre:t.titre, lieu:t.lieu, description:t.description||'',
+      membreId: teamArr[i % teamArr.length].id,
+      date: dstr(d), heure: DEMO_HEURES[i], duree: DEMO_DUREES[i], statut: DEMO_STATUTS[i],
+      creeLe: dstr(cd)
+    };
+  });
+}
+function genBacklogTasks(teamArr){
+  const today = new Date();
+  return BACKLOG_TITLES.map((t,i)=>{
+    const cd = new Date(today); cd.setDate(cd.getDate()-(i*2+1));
+    return {
+      id:uid(), titre:t.titre, lieu:t.lieu, description:t.description||'',
+      membreId: teamArr[(i+2) % teamArr.length].id,
+      date:'', heure:'', duree:60, statut:'planifiee',
+      creeLe: dstr(cd)
+    };
+  });
+}
+
+// ── NUMÉRO D'INTERVENTION (format AA-N, ex: 26-1 à 26-999999) ──
+const NUM_SEQ_KEY = 'planneur_num_seq';
+function nextInterventionNumero(dateStr){
+  const year = dateStr ? Number(dateStr.slice(2,4)) : (new Date().getFullYear()%100);
+  let seq = Number(localStorage.getItem(NUM_SEQ_KEY) || '0') + 1;
+  if (seq > 999999) seq = 999999; // borne haute demandée
+  localStorage.setItem(NUM_SEQ_KEY, String(seq));
+  return `${String(year).padStart(2,'0')}-${String(seq).padStart(6,'0')}`;
+}
+
+let team = JSON.parse(localStorage.getItem(TEAM_KEY) || 'null');
+if (!team) team = JSON.parse(JSON.stringify(INITIAL_TEAM));
+
+let taches = JSON.parse(localStorage.getItem(TASKS_KEY) || 'null');
+if (!taches) taches = genDemoTasks(team);
+
+let seedV = Number(localStorage.getItem('planneur_seed_v') || '0');
+if (seedV < SEED_VERSION){
+  EXTRA_TEAM.forEach(m => { if (!team.some(t=>t.nom===m.nom)) team.push(JSON.parse(JSON.stringify(m))); });
+  genBacklogTasks(team).forEach(t => { if (!taches.some(x=>x.titre===t.titre && !x.date)) taches.push(t); });
+  // Complète la description des interventions de démo déjà générées lors d'une version précédente
+  const descByTitre = {};
+  [...DEMO_TITLES, ...BACKLOG_TITLES].forEach(t => { if (t.description) descByTitre[t.titre] = t.description; });
+  taches.forEach(t => { if (!t.description && descByTitre[t.titre]) t.description = descByTitre[t.titre]; });
+  // Renseigne une date de création pour les interventions qui n'en ont pas encore (ancienne version).
+  taches.forEach(t => { if (!t.creeLe) t.creeLe = t.date || dstr(new Date()); });
+  // Attribue un numéro d'intervention (format AA-N) aux interventions qui n'en ont pas encore,
+  // dans l'ordre chronologique de création.
+  taches.filter(t=>!t.numero).sort((a,b)=>(a.creeLe||'').localeCompare(b.creeLe||'')).forEach(t=>{
+    t.numero = nextInterventionNumero(t.creeLe);
+  });
+  // Reformate les numéros déjà attribués (ex: "26-1") sur 6 chiffres ("26-000001").
+  taches.forEach(t=>{
+    if (t.numero){
+      const [yy, n] = t.numero.split('-');
+      if (n && n.length < 6) t.numero = `${yy}-${n.padStart(6,'0')}`;
+    }
+  });
+  localStorage.setItem('planneur_seed_v', String(SEED_VERSION));
+}
+
+function saveTeam(){ localStorage.setItem(TEAM_KEY, JSON.stringify(team)); }
+function saveTaches(){ localStorage.setItem(TASKS_KEY, JSON.stringify(taches)); }
+saveTeam(); saveTaches();
+
+// ── STATE ──
+let currentView = 'mois';
+let currentDate = new Date();
+let filterMembreId = null;
+let dragTaskId = null;
+let editingTaskId = null;
+let mainMode = 'planning'; // 'planning' | 'interventions'
+
+// ── DARK MODE ──
+function toggleDark(){
+  const d=document.body.classList.toggle('dark');
+  localStorage.setItem('mp_dark', d?'1':'0');
+  document.getElementById('darkBtn').textContent = d?'☀️':'🌙';
+  document.getElementById('themeColor').content = d?'#0a1520':'#1e3a5f';
+  updateThemeButtons();
+}
+function setTheme(mode){
+  const dark = mode==='dark';
+  if (dark !== document.body.classList.contains('dark')) toggleDark();
+}
+function updateThemeButtons(){
+  const dark = document.body.classList.contains('dark');
+  const lb=document.getElementById('themeLightBtn'), db=document.getElementById('themeDarkBtn');
+  if(lb){ lb.classList.toggle('tb-gold', !dark); lb.classList.toggle('tb-ghost', dark); }
+  if(db){ db.classList.toggle('tb-gold', dark); db.classList.toggle('tb-ghost', !dark); }
+}
+if (localStorage.getItem('mp_dark')==='1'){
+  document.body.classList.add('dark');
+  document.getElementById('themeColor').content = '#0a1520';
+  document.getElementById('darkBtn').textContent = '☀️';
+}
+
+// ── PARAMÈTRES / SAUVEGARDE JSON ──
+const BACKUP_KEYS = ['maintenancepro_data','planneur_equipe','planneur_interventions','planneur_conges','mp_dark'];
+function openSettings(){
+  updateThemeButtons();
+  document.getElementById('weekendLockToggle').checked = weekendLocked();
+  document.getElementById('settingsModal').classList.add('open');
+}
+function closeSettings(){
+  document.getElementById('settingsModal').classList.remove('open');
+}
+function toggleWeekendLock(checked){
+  localStorage.setItem(WEEKEND_LOCK_KEY, checked?'1':'0');
+  refreshMain();
+  toast(checked ? '🔒 Week-end verrouillé' : '✅ Week-end déverrouillé — planification possible');
+}
+function exportData(){
+  const data = {};
+  BACKUP_KEYS.forEach(k=>{ const v = localStorage.getItem(k); if (v!==null) data[k] = v; });
+  const payload = { app:'MaintenancePro', version:1, exportedAt: new Date().toISOString(), data };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `maintenancepro-sauvegarde-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('✅ Sauvegarde exportée');
+}
+function importDataFile(input){
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const payload = JSON.parse(e.target.result);
+      const data = (payload && typeof payload==='object' && payload.data) ? payload.data : payload;
+      if (!data || typeof data !== 'object') throw new Error('format invalide');
+      if (!confirm('Cela va remplacer vos données actuelles (équipe, planning, congés) par celles du fichier. Continuer ?')) { input.value=''; return; }
+      Object.keys(data).forEach(k => { if (BACKUP_KEYS.includes(k)) localStorage.setItem(k, data[k]); });
+      closeSettings();
+      alert('Sauvegarde importée avec succès. La page va se recharger.');
+      location.reload();
+    } catch (err) {
+      alert('Fichier invalide : ' + err.message);
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ── SIDEBAR / BACKLOG MOBILE ──
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('open'); }
+function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('open'); }
+function toggleBacklog(){ document.getElementById('backlogPanel').classList.toggle('open'); document.getElementById('backlogOverlay').classList.toggle('open'); }
+
+// ── APP SWITCH (robuste : new tab, avec repli si bloqué, y compris en mode PWA standalone) ──
+function openApp(e, url){
+  e.preventDefault();
+  const w = window.open(url, '_blank');
+  if (!w) { window.location.href = url; }
+  return false;
+}
+
+// ── TOAST ──
+function toast(msg){
+  const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+// ── CONFIRM MODAL ──
+function confirm2(title,msg,cb,btnLabel='Supprimer',btnColor='var(--danger)'){
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmMsg').textContent=msg;
+  const btn=document.getElementById('confirmOkBtn');
+  btn.textContent=btnLabel; btn.style.background=btnColor;
+  btn.onclick=()=>{ closeConfirm(); cb(); };
+  document.getElementById('confirmModal').classList.add('open');
+}
+function closeConfirm(){ document.getElementById('confirmModal').classList.remove('open'); }
+
+// ══════════════════════════════════════════════════
+// ÉQUIPE
+// ══════════════════════════════════════════════════
+function initiales(nom){
+  return nom.trim().split(/\s+/).slice(0,2).map(w=>w[0].toUpperCase()).join('');
+}
+function membreById(id){ return team.find(m=>m.id===id); }
+
+function renderTeam(){
+  document.getElementById('teamCount').textContent = team.length;
+  const list = document.getElementById('teamList');
+  list.classList.toggle('has-expanded', !!expandedMemberId);
+  if (!team.length){
+    list.innerHTML = '<div class="team-empty">Aucun membre. Ajoutez votre équipe ci-dessous.</div>';
+    return;
+  }
+  list.innerHTML = team.map(m=>{
+    const mc = congesForMembre(m.id);
+    const expanded = expandedMemberId===m.id;
+    return `
+    <div class="team-member${filterMembreId===m.id?' filtered':''}" style="--member-c:${m.couleur};" onclick="toggleMemberFilter('${m.id}')" title="Filtrer sur ${esc(m.nom)}">
+      <div class="member-avatar" style="background:${m.couleur};">${initiales(m.nom)}</div>
+      <div class="member-info">
+        <div class="member-name" onclick="event.stopPropagation();toggleMemberConges('${m.id}')" title="Gérer les congés de ${esc(m.nom)}">${esc(m.nom)}${mc.length?`<span class="member-conge-dot" title="${mc.length} congé(s) enregistré(s)"></span>`:''}</div>
+        <div class="member-role">${esc(m.role||'—')}</div>
+      </div>
+      <button class="member-del" onclick="event.stopPropagation();deleteMember('${m.id}')" title="Retirer">×</button>
+    </div>
+    ${expanded?`
+    <div class="member-conges-panel" onclick="event.stopPropagation();">
+      ${mc.length?mc.map(c=>`
+        <div class="conge-item">
+          <span class="conge-badge" style="background:${congeColor(c.type)};">${c.type}</span>
+          <span class="conge-dates">${fmtDateShort(c.debut)} → ${fmtDateShort(c.fin)}</span>
+          <button class="conge-del" onclick="deleteConge('${c.id}')" title="Supprimer">×</button>
+        </div>`).join(''):'<div class="conge-empty">Aucun congé enregistré.</div>'}
+      <div class="conge-add">
+        <select class="cg-input" id="cgType_${m.id}">${CONGE_TYPES.map(t=>`<option>${t}</option>`).join('')}</select>
+        <div class="conge-add-dates">
+          <input class="cg-input" type="date" id="cgDebut_${m.id}" title="Date de début">
+          <span class="conge-arrow">→</span>
+          <input class="cg-input" type="date" id="cgFin_${m.id}" title="Date de fin">
+        </div>
+        <button class="tb-btn tb-gold conge-add-btn" onclick="addConge('${m.id}')">＋ Ajouter le congé</button>
+      </div>
+    </div>`:''}
+  `;
+  }).join('');
+}
+
+function toggleMemberFilter(id){
+  filterMembreId = (filterMembreId===id) ? null : id;
+  renderTeam();
+  updateFilterChip();
+  refreshMain();
+  renderBacklog();
+}
+function clearFilter(){
+  filterMembreId = null;
+  renderTeam(); updateFilterChip(); refreshMain(); renderBacklog();
+}
+function updateFilterChip(){
+  const chip = document.getElementById('filterChip');
+  if (!filterMembreId){ chip.classList.remove('show'); return; }
+  const m = membreById(filterMembreId);
+  if (!m){ filterMembreId=null; chip.classList.remove('show'); return; }
+  document.getElementById('filterChipLabel').textContent = '👤 '+m.nom;
+  chip.classList.add('show');
+}
+
+function toggleAddMemberForm(){
+  const f = document.getElementById('addMemberForm');
+  f.classList.toggle('open');
+  if (f.classList.contains('open')){ document.getElementById('amNom').value=''; document.getElementById('amRole').value=''; document.getElementById('amNom').focus(); }
+}
+
+function addMember(){
+  const nom = document.getElementById('amNom').value.trim();
+  const role = document.getElementById('amRole').value.trim();
+  if (!nom){ toast('⚠️ Le nom est requis'); return; }
+  const couleur = COLORS[team.length % COLORS.length];
+  team.push({id:uid(), nom, role, couleur});
+  saveTeam(); renderTeam(); populateMembreSelect();
+  toggleAddMemberForm();
+  refreshMain(); renderBacklog();
+  toast('✅ Membre ajouté à l\'équipe');
+}
+
+function deleteMember(id){
+  const m = membreById(id);
+  if (!m) return;
+  confirm2('Retirer ce membre ?', `${m.nom} sera retiré de l'équipe. Les interventions déjà planifiées seront conservées (non assignées).`, ()=>{
+    team = team.filter(t=>t.id!==id);
+    conges = conges.filter(c=>c.membreId!==id);
+    if (filterMembreId===id) filterMembreId=null;
+    if (expandedMemberId===id) expandedMemberId=null;
+    saveTeam(); saveConges(); renderTeam(); populateMembreSelect(); updateFilterChip(); refreshMain(); renderBacklog();
+    toast('🗑️ Membre retiré');
+  });
+}
+
+// ══════════════════════════════════════════════════
+// CONGÉS
+// ══════════════════════════════════════════════════
+const CONGE_TYPES = ['Congés payés','RTT','Récupération','Congé sans solde','Congé exceptionnel','ASA','Arrêt maladie'];
+const CONGE_COLORS = ['#0984e3','#00b894','#00cec9','#e17055','#fd79a8','#6c5ce7','#d63031'];
+const CONGES_KEY = 'planneur_conges';
+let conges = JSON.parse(localStorage.getItem(CONGES_KEY) || 'null') || [];
+let expandedMemberId = null;
+
+function saveConges(){ localStorage.setItem(CONGES_KEY, JSON.stringify(conges)); }
+function congeColor(type){ const i = CONGE_TYPES.indexOf(type); return CONGE_COLORS[i>=0?i%CONGE_COLORS.length:0]; }
+function congesForMembre(id){ return conges.filter(c=>c.membreId===id).sort((a,b)=>a.debut.localeCompare(b.debut)); }
+function congeFor(membreId, dateStr){
+  if (!membreId) return null;
+  return conges.find(c=>c.membreId===membreId && dateStr>=c.debut && dateStr<=c.fin) || null;
+}
+function fmtDateShort(ds){ const [y,m,d] = ds.split('-').map(Number); return `${d} ${MOIS_NOMS[m-1].toLowerCase()}`; }
+
+function toggleMemberConges(id){
+  expandedMemberId = (expandedMemberId===id) ? null : id;
+  renderTeam();
+  if (expandedMemberId){
+    const panel = document.querySelector('.member-conges-panel');
+    if (panel) panel.scrollIntoView({block:'nearest', behavior:'smooth'});
+  }
+}
+
+function addConge(membreId){
+  const type = document.getElementById('cgType_'+membreId).value;
+  const debut = document.getElementById('cgDebut_'+membreId).value;
+  const fin = document.getElementById('cgFin_'+membreId).value;
+  if (!debut || !fin){ toast('⚠️ Sélectionnez une date de début et de fin'); return; }
+  if (fin < debut){ toast('⚠️ La date de fin doit être après la date de début'); return; }
+  conges.push({id:uid(), membreId, type, debut, fin});
+  saveConges(); renderTeam(); refreshMain();
+  toast('✅ Congé ajouté');
+}
+
+function deleteConge(id){
+  const c = conges.find(x=>x.id===id);
+  if (!c) return;
+  const m = membreById(c.membreId);
+  confirm2('Supprimer ce congé ?', `${c.type} du ${fmtDateShort(c.debut)} au ${fmtDateShort(c.fin)}${m?' pour '+m.nom:''} sera supprimé.`, ()=>{
+    conges = conges.filter(x=>x.id!==id);
+    saveConges(); renderTeam(); refreshMain();
+    toast('🗑️ Congé supprimé');
+  });
+}
+
+// ══════════════════════════════════════════════════
+// VUES
+// ══════════════════════════════════════════════════
+const JOURS_SEMAINE = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+const JOURS_SEMAINE_COURT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+// ══════════════════════════════════════════════════
+// JOURS FÉRIÉS & VACANCES SCOLAIRES (France)
+// ══════════════════════════════════════════════════
+const FERIES_CACHE_KEY = 'planneur_feries';
+const VACANCES_CACHE_KEY = 'planneur_vacances';
+const VACANCES_ZONE = 'Zone B';
+const CALENDAR_CACHE_MAX_AGE = 1000*60*60*24*30; // 30 jours
+
+let joursFeries = {}; // 'YYYY-MM-DD' -> nom du jour férié
+let vacances = []; // [{start:'YYYY-MM-DD', end:'YYYY-MM-DD', label}]
+
+function isJourFerie(dateStr){ return joursFeries[dateStr] || null; }
+function isVacances(dateStr){ return vacances.find(v=>dateStr>=v.start && dateStr<=v.end) || null; }
+
+// ── WEEK-END (samedi/dimanche affichés mais verrouillés par défaut) ──
+const WEEKEND_LOCK_KEY = 'planneur_weekend_locked';
+function weekendLocked(){ return localStorage.getItem(WEEKEND_LOCK_KEY) !== '0'; } // verrouillé par défaut
+function isWeekendDate(dateStr){ if (!dateStr) return false; const day = new Date(dateStr+'T00:00:00').getDay(); return day===0 || day===6; }
+function isWeekendBlocked(dateStr){ return isWeekendDate(dateStr) && weekendLocked(); }
+
+function loadCalendarCache(){
+  try{
+    const f = JSON.parse(localStorage.getItem(FERIES_CACHE_KEY)||'null');
+    if (f && f.data) joursFeries = f.data;
+  }catch(e){}
+  try{
+    const v = JSON.parse(localStorage.getItem(VACANCES_CACHE_KEY)||'null');
+    if (v && v.zone===VACANCES_ZONE && v.data) vacances = v.data;
+  }catch(e){}
+}
+
+async function refreshCalendarData(){
+  const now = Date.now();
+  const y = new Date().getFullYear();
+
+  const feriesCache = JSON.parse(localStorage.getItem(FERIES_CACHE_KEY)||'null');
+  if (!feriesCache || (now-feriesCache.ts) > CALENDAR_CACHE_MAX_AGE){
+    try{
+      const years = [y-1,y,y+1,y+2];
+      const results = await Promise.all(years.map(yr=>
+        fetch(`https://calendrier.api.gouv.fr/jours-feries/metropole/${yr}.json`).then(r=>r.ok?r.json():{}).catch(()=>({}))
+      ));
+      const merged = Object.assign({}, ...results);
+      if (Object.keys(merged).length){
+        joursFeries = merged;
+        localStorage.setItem(FERIES_CACHE_KEY, JSON.stringify({ts:now, data:merged}));
+      }
+    }catch(e){}
+  }
+
+  const vacCache = JSON.parse(localStorage.getItem(VACANCES_CACHE_KEY)||'null');
+  if (!vacCache || vacCache.zone!==VACANCES_ZONE || (now-vacCache.ts) > CALENDAR_CACHE_MAX_AGE){
+    try{
+      const start = `${y-1}-01-01`, end = `${y+2}-12-31`;
+      const q = `start_date:[${start} TO ${end}]`;
+      const url = `https://data.education.gouv.fr/api/records/1.0/search/?dataset=fr-en-calendrier-scolaire&rows=200&refine.zones=${encodeURIComponent(VACANCES_ZONE)}&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url);
+      if (res.ok){
+        const json = await res.json();
+        const map = new Map();
+        (json.records||[]).forEach(r=>{
+          const f = r.fields||{};
+          if (!f.start_date || !f.end_date || !f.description) return;
+          const startD = new Date(f.start_date);
+          const endD = new Date(f.end_date); endD.setDate(endD.getDate()-1); // end_date = jour de reprise (exclusif)
+          const key = f.description+'|'+dstr(startD)+'|'+dstr(endD);
+          if (!map.has(key)) map.set(key, {start:dstr(startD), end:dstr(endD), label:f.description});
+        });
+        vacances = Array.from(map.values());
+        localStorage.setItem(VACANCES_CACHE_KEY, JSON.stringify({ts:now, zone:VACANCES_ZONE, data:vacances}));
+      }
+    }catch(e){}
+  }
+  refreshMain();
+}
+
+function isSameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+function visibleTasks(){ return filterMembreId ? taches.filter(t=>t.membreId===filterMembreId) : taches; }
+function tasksForDate(dateStr){ return visibleTasks().filter(t=>t.date===dateStr).sort((a,b)=>(a.heure||'').localeCompare(b.heure||'')); }
+function mondayOf(d){ const r=new Date(d); const day=(r.getDay()+6)%7; r.setDate(r.getDate()-day); return r; }
+
+function setView(v){
+  currentView = v;
+  document.querySelectorAll('.view-tab').forEach(el=>el.classList.toggle('active', el.dataset.view===v));
+  refreshMain();
+}
+
+function navPeriod(dir){
+  const d = new Date(currentDate);
+  if (currentView==='jour') d.setDate(d.getDate()+dir);
+  else if (currentView==='semaine') d.setDate(d.getDate()+7*dir);
+  else if (currentView==='mois') d.setMonth(d.getMonth()+dir);
+  else d.setFullYear(d.getFullYear()+dir);
+  currentDate = d;
+  refreshMain();
+}
+
+function goToday(){ currentDate = new Date(); refreshMain(); }
+
+function jumpToDay(dateStr){
+  currentDate = new Date(dateStr+'T00:00:00');
+  setView('jour');
+}
+function jumpToMonth(dateObj){
+  currentDate = new Date(dateObj);
+  setView('mois');
+}
+
+function renderMain(){
+  const el = document.getElementById('mainContent');
+  const label = document.getElementById('periodLabel');
+
+  if (currentView==='jour'){
+    label.textContent = `${JOURS_SEMAINE[(currentDate.getDay()+6)%7]} ${currentDate.getDate()} ${MOIS_NOMS[currentDate.getMonth()].toLowerCase()} ${currentDate.getFullYear()}`;
+    el.innerHTML = renderDayView(currentDate);
+  } else if (currentView==='semaine'){
+    const mon = mondayOf(currentDate);
+    const fri = new Date(mon); fri.setDate(fri.getDate()+4);
+    label.textContent = `${mon.getDate()} → ${fri.getDate()} ${MOIS_NOMS[fri.getMonth()].toLowerCase()} ${fri.getFullYear()}`;
+    el.innerHTML = renderWeekView(mon);
+  } else if (currentView==='mois'){
+    label.textContent = `${MOIS_NOMS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+    el.innerHTML = renderMonthView(currentDate);
+  } else {
+    label.textContent = `${currentDate.getFullYear()}`;
+    el.innerHTML = renderYearView(currentDate);
+  }
+}
+
+// Réaffiche la vue actuellement active (Planning ou Interventions) après une modification de données.
+function refreshMain(){
+  if (mainMode==='interventions') renderInterventionsView();
+  else renderMain();
+}
+
+// ══════════════════════════════════════════════════
+// VUE INTERVENTIONS (TABLEAU)
+// ══════════════════════════════════════════════════
+let intFilterMetier = '';
+let intFilterLieu = '';
+let intFilterNumero = '';
+let intFilterDateFrom = '';
+let intFilterDateTo = '';
+
+function showPlanningView(){
+  mainMode = 'planning';
+  document.getElementById('navPlanning').classList.add('active');
+  document.getElementById('navInterventions').classList.remove('active');
+  document.getElementById('topbarTitleText').innerHTML = `Planning<span class="topbar-sub" id="topbarSub"></span>`;
+  document.getElementById('calControls').style.display = 'contents';
+  closeSidebar();
+  refreshMain();
+}
+
+function showInterventionsView(){
+  mainMode = 'interventions';
+  document.getElementById('navPlanning').classList.remove('active');
+  document.getElementById('navInterventions').classList.add('active');
+  document.getElementById('topbarTitleText').textContent = 'Interventions';
+  document.getElementById('calControls').style.display = 'none';
+  closeSidebar();
+  renderInterventionsView();
+}
+
+function metiersDisponibles(){
+  return Array.from(new Set(team.map(m=>m.role).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+}
+
+function setIntFilter(field, value){
+  if (field==='metier') intFilterMetier = value;
+  else if (field==='lieu') intFilterLieu = value;
+  else if (field==='numero') intFilterNumero = value;
+  else if (field==='dateFrom') intFilterDateFrom = value;
+  else if (field==='dateTo') intFilterDateTo = value;
+  renderInterventionsView();
+}
+
+function filteredInterventions(){
+  return taches.filter(t=>{
+    if (intFilterMetier){ const m=membreById(t.membreId); if (!m || m.role!==intFilterMetier) return false; }
+    if (intFilterLieu && !(t.lieu||'').toLowerCase().includes(intFilterLieu.toLowerCase())) return false;
+    if (intFilterNumero && !(t.numero||'').toLowerCase().includes(intFilterNumero.toLowerCase().replace(/^#/,''))) return false;
+    const created = t.creeLe || '';
+    if (intFilterDateFrom && (!created || created < intFilterDateFrom)) return false;
+    if (intFilterDateTo && (!created || created > intFilterDateTo)) return false;
+    return true;
+  }).sort((a,b)=>(b.creeLe||'').localeCompare(a.creeLe||''));
+}
+
+function renderInterventionsView(){
+  const el = document.getElementById('mainContent');
+  const list = filteredInterventions();
+  const metiers = metiersDisponibles();
+
+  const rows = list.map(t=>{
+    const m = membreById(t.membreId);
+    return `<tr onclick="openTaskModal('${t.id}')">
+      <td style="font-weight:700;color:var(--navy2);white-space:nowrap;">${t.numero?'#'+t.numero:'—'}</td>
+      <td>${esc(t.titre)}</td>
+      <td>${t.lieu?esc(t.lieu):'—'}</td>
+      <td>${m?esc(m.role||'—'):'—'}</td>
+      <td><span class="member-chip"><span class="m-avatar-mini" style="background:${m?m.couleur:'#999'};">${m?initiales(m.nom):'?'}</span>${m?esc(m.nom):'Non assigné'}</span></td>
+      <td><span class="badge badge-${t.statut}">${statutLabel(t.statut)}</span></td>
+      <td>${t.date?fmtDateShort(t.date):'<span style="color:var(--text2);">Non planifiée</span>'}</td>
+      <td>${t.creeLe?fmtDateShort(t.creeLe):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<div class="fade-in">
+    <div class="int-filters">
+      <div class="int-filter-group">
+        <label>Corps de métier</label>
+        <select onchange="setIntFilter('metier', this.value)">
+          <option value="">Tous</option>
+          ${metiers.map(r=>`<option value="${r}"${intFilterMetier===r?' selected':''}>${r}</option>`).join('')}
+        </select>
+      </div>
+      <div class="int-filter-group">
+        <label>N° intervention</label>
+        <input type="text" placeholder="Ex: 26-000012" value="${intFilterNumero}" oninput="setIntFilter('numero', this.value)">
+      </div>
+      <div class="int-filter-group">
+        <label>Lieu</label>
+        <input type="text" placeholder="Rechercher un lieu..." value="${intFilterLieu}" oninput="setIntFilter('lieu', this.value)">
+      </div>
+      <div class="int-filter-group">
+        <label>Date de création</label>
+        <div class="int-date-range">
+          <input type="date" value="${intFilterDateFrom}" onchange="setIntFilter('dateFrom', this.value)" title="Du">
+          <span style="color:var(--text2);font-size:11px;">→</span>
+          <input type="date" value="${intFilterDateTo}" onchange="setIntFilter('dateTo', this.value)" title="Au">
+        </div>
+      </div>
+      ${(intFilterMetier||intFilterLieu||intFilterNumero||intFilterDateFrom||intFilterDateTo)?`<button class="tb-btn tb-ghost" onclick="intFilterMetier='';intFilterLieu='';intFilterNumero='';intFilterDateFrom='';intFilterDateTo='';renderInterventionsView();">✕ Réinitialiser</button>`:''}
+    </div>
+    <div class="int-count">${list.length} intervention${list.length>1?'s':''}${list.length!==taches.length?` (sur ${taches.length} au total)`:''}</div>
+    ${list.length ? `<div class="int-table-scroll"><table class="int-table">
+      <thead><tr><th>N°</th><th>Titre</th><th>Lieu</th><th>Corps de métier</th><th>Membre</th><th>Statut</th><th>Date planifiée</th><th>Créée le</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>` : `<div class="int-empty">Aucune intervention ne correspond à ces filtres.</div>`}
+  </div>`;
+}
+
+// ── DRAG & DROP ──
+function onDragStart(e, id){
+  dragTaskId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', id); } catch(err){}
+}
+function onDragOverCell(e){ e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function onDragLeaveCell(e){ e.currentTarget.classList.remove('drag-over'); }
+function onDropCell(e, dateStr){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const id = dragTaskId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+  dragTaskId = null;
+  if (!id) return;
+  const ferie = isJourFerie(dateStr);
+  if (ferie){ toast(`🎌 Jour férié (${ferie}) : impossible de planifier une intervention ce jour`); return; }
+  if (isWeekendBlocked(dateStr)){ toast('🔒 Week-end verrouillé — activez-le dans Paramètres pour planifier ce jour'); return; }
+  const t = taches.find(x=>x.id===id);
+  if (!t) return;
+  const conge = congeFor(t.membreId, dateStr);
+  if (conge){ const m=membreById(t.membreId); toast(`🚫 ${m?m.nom:'Ce membre'} est en ${conge.type.toLowerCase()} du ${fmtDateShort(conge.debut)} au ${fmtDateShort(conge.fin)}`); return; }
+  const wasUnscheduled = !t.date;
+  const sameDay = t.date === dateStr;
+  t.date = dateStr;
+  if (!t.heure) t.heure = '09:00';
+  saveTaches();
+  refreshMain(); renderBacklog();
+  if (!sameDay) toast(wasUnscheduled ? '📅 Intervention planifiée' : '🔁 Intervention déplacée');
+}
+
+// ── JOUR ──
+function renderDayView(dateObj){
+  const ds = dstr(dateObj);
+  const ferie = isJourFerie(ds);
+  const vac = isVacances(ds);
+  const weekendOff = isWeekendBlocked(ds);
+  const conge = filterMembreId ? congeFor(filterMembreId, ds) : null;
+  const list = tasksForDate(ds);
+  const membreLabel = filterMembreId ? (membreById(filterMembreId)||{}).nom : '';
+  const banner = ferie ? `<div class="day-ferie-banner fade-in">🎌 Jour férié — ${ferie}. Aucune intervention ne peut être planifiée ce jour.</div>`
+    : weekendOff ? `<div class="day-ferie-banner fade-in">🔒 Week-end verrouillé. Activez-le dans ⚙️ Paramètres pour planifier ce jour.</div>`
+    : conge ? `<div class="day-conge-banner fade-in">🚫 ${membreLabel} — ${conge.type} du ${fmtDateShort(conge.debut)} au ${fmtDateShort(conge.fin)}</div>`
+    : vac ? `<div class="day-vacances-banner fade-in">🏖️ Vacances scolaires — ${vac.label} (${VACANCES_ZONE})</div>` : '';
+  const empty = !list.length ? `<div class="day-empty fade-in"><div class="day-empty-icon">🗓️</div>Aucune intervention planifiée ce jour.<br>Glissez une carte ici depuis la liste des non planifiées.</div>` : '';
+  const items = list.map(t=>{
+    const m = membreById(t.membreId);
+    const [h,mn] = t.heure.split(':').map(Number);
+    const endMin = h*60+mn+Number(t.duree);
+    const endH = pad(Math.floor(endMin/60)%24), endM = pad(endMin%60);
+    return `<div class="day-task" style="border-left-color:${m?m.couleur:'var(--text2)'};" draggable="true" ondragstart="onDragStart(event,'${t.id}')">
+      <div class="day-task-time">${t.heure}<small>→ ${endH}:${endM}</small></div>
+      <div class="day-task-body" onclick="openTaskModal('${t.id}')">
+        <div class="day-task-title">${t.numero?`<span style="color:var(--text2);font-weight:600;">#${t.numero}</span> `:''}${esc(t.titre)}</div>
+        ${t.description?`<div class="day-task-desc">${esc(t.description).replace(/\n/g,'<br>')}</div>`:''}
+        <div class="day-task-meta">
+          <span class="member-chip"><span class="m-avatar-mini" style="background:${m?m.couleur:'#999'};">${m?initiales(m.nom):'?'}</span>${m?esc(m.nom):'Non assigné'}</span>
+          <span class="badge badge-${t.statut}">${statutLabel(t.statut)}</span>
+          ${t.lieu?`<span style="font-size:11px;color:var(--text2);">📍 ${esc(t.lieu)}</span>`:''}
+          ${getSourcePhotos(t).length?`<span class="photo-badge">📷 ${getSourcePhotos(t).length}</span>`:''}
+          ${(t.documents&&t.documents.length)?`<span class="photo-badge">📎 ${t.documents.length}</span>`:''}
+        </div>
+      </div>
+      <button class="day-task-del" onclick="event.stopPropagation();deleteTask('${t.id}')" title="Supprimer">🗑️</button>
+    </div>`;
+  }).join('');
+  const dropAttrs = (ferie||weekendOff) ? '' : `ondragover="onDragOverCell(event)" ondragleave="onDragLeaveCell(event)" ondrop="onDropCell(event,'${ds}')"`;
+  return `<div class="day-agenda fade-in" ${dropAttrs}>${banner}${items}${empty}</div>`;
+}
+
+// ── SEMAINE ──
+// Hauteur des blocs proportionnelle à la durée : 1 heure = 1 "ligne" (HOUR_PX),
+// jusqu'à 4 h qui remplissent entièrement la case (un créneau matin ou après-midi).
+const HOUR_PX = 34;
+const MIN_CHIP_H = 24;
+function chipHeight(duree){ return Math.max(MIN_CHIP_H, Math.round((Number(duree)||60)/60*HOUR_PX)); }
+
+function renderWeekView(monday){
+  const today = new Date();
+  let cols = '';
+  for (let i=0;i<7;i++){
+    const d = new Date(monday); d.setDate(d.getDate()+i);
+    const ds = dstr(d);
+    const list = tasksForDate(ds);
+    const ferie = isJourFerie(ds);
+    const vac = isVacances(ds);
+    const weekendOff = isWeekendBlocked(ds);
+    const conge = filterMembreId ? congeFor(filterMembreId, ds) : null;
+    const colCls = ['week-day-col'];
+    if (ferie) colCls.push('ferie'); else if (weekendOff) colCls.push('weekend-off'); else if (conge) colCls.push('conge'); else if (vac) colCls.push('vacances');
+    const dropAttrs = (ferie||weekendOff) ? '' : `ondragover="onDragOverCell(event)" ondragleave="onDragLeaveCell(event)" ondrop="onDropCell(event,'${ds}')"`;
+    const titleAttr = ferie ? ` title="Jour férié : ${ferie}"` : weekendOff ? ` title="Week-end verrouillé — activez-le dans Paramètres"` : conge ? ` title="${conge.type} : ${(membreById(filterMembreId)||{}).nom||''}"` : vac ? ` title="Vacances scolaires : ${vac.label}"` : '';
+    cols += `<div class="${colCls.join(' ')}" ${dropAttrs}>
+      <div class="week-day-head${isSameDay(d,today)?' today':''}" onclick="jumpToDay('${ds}')"${titleAttr}>
+        <div class="week-day-name">${JOURS_SEMAINE_COURT[i]}${ferie?' 🎌':weekendOff?' 🔒':conge?' 🚫':vac?' 🏖️':''}</div>
+        <div class="week-day-num">${d.getDate()}</div>
+      </div>
+      <div class="week-day-tasks">
+        ${list.length ? list.map(t=>{
+          const m = membreById(t.membreId);
+          return `<div class="week-task-chip" style="border-left-color:${m?m.couleur:'var(--text2)'};height:${chipHeight(t.duree)}px;" draggable="true" ondragstart="onDragStart(event,'${t.id}')" onclick="openTaskModal('${t.id}')" oncontextmenu="onTaskContextMenu(event,'${t.id}')">
+            <div class="week-task-chip-time"><span>${t.heure}</span><span class="m-avatar-mini" style="background:${m?m.couleur:'#999'};">${m?initiales(m.nom):'?'}</span></div>
+            <div class="week-task-chip-title">${esc(t.titre)}</div>
+          </div>`;
+        }).join('') : ''}
+      </div>
+    </div>`;
+  }
+  return `<div class="week-grid fade-in">${cols}</div>`;
+}
+
+// Construit une liste de jours (lun-dim) couvrant tout le mois `month`, alignés en lignes de 7.
+function weekdayGridFor(year, month){
+  const first = new Date(year, month, 1);
+  const startOffset = (first.getDay()+6)%7;
+  const gridStart = new Date(first); gridStart.setDate(gridStart.getDate()-startOffset);
+  const days = [];
+  const d = new Date(gridStart);
+  for (let i=0;i<49;i++){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
+  let lastIdx = -1;
+  days.forEach((dt,i)=>{ if (dt.getMonth()===month) lastIdx=i; });
+  const totalRows = Math.ceil((lastIdx+1)/7);
+  return days.slice(0, totalRows*7);
+}
+
+// ── MOIS ──
+function renderMonthView(dateObj){
+  const year = dateObj.getFullYear(), month = dateObj.getMonth();
+  const today = new Date();
+  const dow = JOURS_SEMAINE_COURT.map(d=>`<div class="month-dow">${d}</div>`).join('');
+  const cells = weekdayGridFor(year, month).map(d=>{
+    const ds = dstr(d);
+    const list = tasksForDate(ds);
+    const outside = d.getMonth()!==month;
+    const ferie = isJourFerie(ds);
+    const vac = isVacances(ds);
+    const weekendOff = isWeekendBlocked(ds);
+    const conge = filterMembreId ? congeFor(filterMembreId, ds) : null;
+    const cls = ['month-cell'];
+    if (outside) cls.push('outside');
+    if (isSameDay(d,today)) cls.push('today');
+    if (ferie) cls.push('ferie'); else if (weekendOff) cls.push('weekend-off'); else if (conge) cls.push('conge'); else if (vac) cls.push('vacances');
+    const shown = list.slice(0,3);
+    const rest = list.length-shown.length;
+    // Quand il n'y a qu'une ou deux interventions ce jour-là, la case reste en grande partie vide :
+    // on agrandit les blocs pour mieux la remplir plutôt que de garder la taille compacte par défaut.
+    const chipSizeCls = list.length===1 ? ' m-chip-lg' : list.length===2 ? ' m-chip-md' : '';
+    const dropAttrs = (ferie||weekendOff) ? '' : `ondragover="onDragOverCell(event)" ondragleave="onDragLeaveCell(event)" ondrop="onDropCell(event,'${ds}')"`;
+    const titleAttr = ferie ? ` title="Jour férié : ${ferie}"` : weekendOff ? ` title="Week-end verrouillé — activez-le dans Paramètres"` : conge ? ` title="${conge.type} : ${(membreById(filterMembreId)||{}).nom||''}"` : vac ? ` title="Vacances scolaires : ${vac.label}"` : '';
+    return `<div class="${cls.join(' ')}" onclick="jumpToDay('${ds}')" ${dropAttrs}${titleAttr}>
+      <div class="month-cell-num">${d.getDate()}${ferie?' 🎌':weekendOff?' 🔒':conge?' 🚫':vac?' 🏖️':''}</div>
+      ${shown.map(t=>{ const m=membreById(t.membreId); return `<div class="month-chip${chipSizeCls}" draggable="true" ondragstart="event.stopPropagation();onDragStart(event,'${t.id}')" onclick="event.stopPropagation();openTaskModal('${t.id}')" style="background:${m?m.couleur:'#8895a5'};">${m?initiales(m.nom)+' · ':''}${esc(t.titre)}</div>`; }).join('')}
+      ${rest>0?`<div class="month-more">+${rest} autre${rest>1?'s':''}</div>`:''}
+    </div>`;
+  }).join('');
+  return `<div class="fade-in"><div class="month-grid">${dow}${cells}</div></div>`;
+}
+
+// ── ANNÉE ──
+function renderYearView(dateObj){
+  const year = dateObj.getFullYear();
+  const today = new Date();
+  let months = '';
+  for (let m=0;m<12;m++){
+    const dow = JOURS_SEMAINE_COURT.map(d=>`<div class="mini-dow">${d[0]}</div>`).join('');
+    const days = weekdayGridFor(year, m).map(d=>{
+      if (d.getMonth()!==m) return `<div class="mini-day outside">${d.getDate()}</div>`;
+      const ds = dstr(d);
+      const has = tasksForDate(ds).length>0;
+      const ferie = isJourFerie(ds);
+      const vac = isVacances(ds);
+      const weekendOff = isWeekendBlocked(ds);
+      const cls = ['mini-day'];
+      if (isSameDay(d,today)) cls.push('today');
+      if (has) cls.push('has-task');
+      if (ferie) cls.push('ferie'); else if (weekendOff) cls.push('weekend-off'); else if (vac) cls.push('vacances');
+      const titleAttr = ferie ? ` title="Jour férié : ${ferie}"` : weekendOff ? ` title="Week-end verrouillé"` : vac ? ` title="Vacances scolaires : ${vac.label}"` : '';
+      return `<div class="${cls.join(' ')}" onclick="jumpToDay('${ds}')"${titleAttr}>${d.getDate()}</div>`;
+    }).join('');
+    months += `<div class="mini-month">
+      <div class="mini-month-title" onclick="jumpToMonth(new Date(${year},${m},1))">${MOIS_NOMS[m]}</div>
+      <div class="mini-cal">${dow}${days}</div>
+    </div>`;
+  }
+  return `<div class="year-grid fade-in">${months}</div>`;
+}
+
+function statutLabel(s){ return s==='planifiee'?'Planifiée':s==='en_cours'?'En cours':'Terminée'; }
+
+// ══════════════════════════════════════════════════
+// NON PLANIFIÉES (BACKLOG)
+// ══════════════════════════════════════════════════
+function renderBacklog(){
+  const list = visibleTasks().filter(t=>!t.date);
+  document.getElementById('backlogCount').textContent = list.length;
+  const badge = document.getElementById('backlogBadge');
+  if (list.length){ badge.style.display='block'; badge.textContent = list.length; } else { badge.style.display='none'; }
+  const wrap = document.getElementById('backlogList');
+  if (!list.length){
+    wrap.innerHTML = '<div class="backlog-empty">🎉 Aucune intervention en attente.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(t=>{
+    const m = membreById(t.membreId);
+    return `<div class="backlog-card" draggable="true" ondragstart="onDragStart(event,'${t.id}')" onclick="openTaskModal('${t.id}')" style="border-left-color:${m?m.couleur:'var(--text2)'};">
+      <div class="backlog-card-title">${esc(t.titre)}</div>
+      <div class="backlog-card-meta">
+        <span class="member-chip"><span class="m-avatar-mini" style="background:${m?m.couleur:'#999'};">${m?initiales(m.nom):'?'}</span>${m?esc(m.nom):'Non assigné'}</span>
+        ${t.lieu?`<span style="font-size:10.5px;color:var(--text2);">📍 ${esc(t.lieu)}</span>`:''}
+        ${getSourcePhotos(t).length?`<span class="photo-badge">📷 ${getSourcePhotos(t).length}</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// LIEN AVEC MAINTENANCEPRO
+// ══════════════════════════════════════════════════
+const MAINTENANCEPRO_DATA_KEY = 'maintenancepro_data';
+
+// Les photos restent stockées côté MaintenancePro (source de vérité) : on les lit à la volée
+// via le lien gamme/point plutôt que de les dupliquer dans planneur_interventions (évite
+// de doubler l'usage du localStorage avec des photos potentiellement volumineuses).
+function getSourcePhotos(t){
+  if (!t || !t.sourceGammeId || !t.sourcePointId) return [];
+  try{
+    const gammes = JSON.parse(localStorage.getItem(MAINTENANCEPRO_DATA_KEY) || '[]') || [];
+    const g = gammes.find(x=>x.id===t.sourceGammeId);
+    const p = g && (g.points||[]).find(x=>x.id===t.sourcePointId);
+    return (p && p.photos) || [];
+  }catch(e){ return []; }
+}
+
+// ══════════════════════════════════════════════════
+// EXPORT PDF — PLANNING DE LA SEMAINE
+// ══════════════════════════════════════════════════
+function fmtDuree(min){
+  min = Number(min)||0;
+  const h = Math.floor(min/60), m = min%60;
+  if (!h) return `${m} min`;
+  if (!m) return `${h} h`;
+  return `${h} h ${m}`;
+}
+
+function exportWeekPDF(){
+  if (!window.jspdf){ toast('⚠️ Bibliothèque PDF non chargée — vérifiez la connexion internet'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm', format:'a4'});
+  const W = 210, M = 15;
+
+  const mon = mondayOf(currentDate);
+  const days = [];
+  for (let i=0;i<5;i++){ const d=new Date(mon); d.setDate(d.getDate()+i); days.push(d); }
+  const fri = days[4];
+  const member = filterMembreId ? membreById(filterMembreId) : null;
+  const subtitle = `${member?member.nom+' — ':''}du ${mon.getDate()} ${MOIS_NOMS[mon.getMonth()].toLowerCase()} au ${fri.getDate()} ${MOIS_NOMS[fri.getMonth()].toLowerCase()} ${fri.getFullYear()}`;
+
+  function drawHeader(title){
+    doc.setFillColor(30,58,95); doc.rect(0,0,W,32,'F');
+    doc.setFillColor(232,160,32); doc.rect(0,29,W,3,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(17); doc.setTextColor(255,255,255);
+    doc.text(title, M, 14);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(180,200,230);
+    doc.text(subtitle, M, 22);
+    doc.setTextColor(200,220,255);
+    doc.text(`Éditée le ${new Date().toLocaleDateString('fr-FR')}`, W-M, 22, {align:'right'});
+  }
+
+  // ── Page 1 : planning de la semaine ──
+  drawHeader('PLANNING DE LA SEMAINE');
+  let y = 42;
+  const weekTasks = [];
+
+  days.forEach((d,i)=>{
+    const ds = dstr(d);
+    const list = tasksForDate(ds);
+    if (y > 255){ doc.addPage(); y=20; }
+    doc.setFillColor(238,241,245); doc.rect(M,y,W-M*2,8,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(30,58,95);
+    doc.text(`${JOURS_SEMAINE[i].toUpperCase()} ${d.getDate()} ${MOIS_NOMS[d.getMonth()].toLowerCase()}`, M+3, y+5.5);
+    y += 12;
+    if (!list.length){
+      doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.setTextColor(140,155,170);
+      doc.text('Aucune intervention planifiée', M+5, y);
+      y += 9;
+    } else {
+      list.forEach(t=>{
+        if (y > 275){ doc.addPage(); y=20; }
+        weekTasks.push({...t, _dateObj:d});
+        const m = membreById(t.membreId);
+        doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(26,35,50);
+        doc.text(`#${weekTasks.length}`, M+5, y+4);
+        doc.text(t.heure||'—', M+16, y+4);
+        doc.setFont('helvetica','normal');
+        const titleLines = doc.splitTextToSize(t.titre, 100);
+        doc.text(titleLines[0], M+32, y+4);
+        doc.setFontSize(8); doc.setTextColor(90,106,122);
+        doc.text(m?m.nom:'Non assigné', M+140, y+4);
+        y += 7;
+      });
+      y += 4;
+    }
+  });
+
+  // ── Pages suivantes : une fiche A4 par intervention, jour par jour ──
+  weekTasks.forEach((t, idx)=>{
+    doc.addPage();
+    const m = membreById(t.membreId);
+    const dow = JOURS_SEMAINE[(t._dateObj.getDay()+6)%7];
+    drawHeader(`INTERVENTION N°${idx+1}`);
+    let dy = 42;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(90,106,122);
+    doc.text(`${dow} ${t._dateObj.getDate()} ${MOIS_NOMS[t._dateObj.getMonth()].toLowerCase()} ${t._dateObj.getFullYear()}`, M, dy); dy += 8;
+
+    doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(30,58,95);
+    const titleLines = doc.splitTextToSize(t.titre||'—', W-M*2);
+    doc.text(titleLines, M, dy); dy += titleLines.length*7 + 3;
+
+    const scol = t.statut==='terminee'?[0,184,148]:t.statut==='en_cours'?[232,160,32]:[9,132,227];
+    const label = statutLabel(t.statut).toUpperCase();
+    doc.setFont('helvetica','bold'); doc.setFontSize(8);
+    doc.setFillColor(...scol);
+    doc.roundedRect(M,dy-4,doc.getTextWidth(label)+8,7,1,1,'F');
+    doc.setTextColor(255,255,255);
+    doc.text(label, M+4, dy); dy += 12;
+
+    doc.setFillColor(238,241,245); doc.rect(M,dy,W-M*2,26,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(90,106,122);
+    const cols=[M+2,M+50,M+100,M+148];
+    ['HORAIRE','DURÉE','MEMBRE ASSIGNÉ','LIEU'].forEach((lbl,i)=>doc.text(lbl,cols[i],dy+6));
+    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(26,35,50);
+    let horaire = '—';
+    if (t.heure){
+      const [h,mn] = t.heure.split(':').map(Number);
+      const endMin = h*60+mn+Number(t.duree||0);
+      horaire = `${t.heure} à ${pad(Math.floor(endMin/60)%24)}:${pad(endMin%60)}`;
+    }
+    [ horaire, fmtDuree(t.duree), m?m.nom:'Non assigné', t.lieu||'—' ].forEach((val,i)=>{
+      const lines = doc.splitTextToSize(val, 46);
+      doc.text(lines[0], cols[i], dy+16);
+    });
+    dy += 34;
+
+    const photos = getSourcePhotos(t);
+    if (photos.length){
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(30,58,95);
+      doc.text(`PHOTOS (${photos.length})`, M, dy);
+      doc.setDrawColor(232,160,32); doc.line(M,dy+2,W-M,dy+2); dy += 8;
+      const size=55, gap=6; let px=M, colIdx=0;
+      photos.forEach(src=>{
+        if (colIdx===3){ colIdx=0; px=M; dy+=size+gap; }
+        if (dy+size > 278){ doc.addPage(); dy=20; px=M; colIdx=0; }
+        try{
+          const fmt = src.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+          doc.addImage(src, fmt, px, dy, size, size);
+        }catch(e){}
+        px += size+gap; colIdx++;
+      });
+    }
+  });
+
+  const pages = doc.internal.getNumberOfPages();
+  for (let p=1;p<=pages;p++){
+    doc.setPage(p);
+    doc.setFillColor(30,58,95); doc.rect(0,287,W,10,'F');
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(180,200,230);
+    doc.text('Maintenance Planneur — Équipe & Planification', M, 293);
+    doc.text(`Page ${p}/${pages}`, W-M, 293, {align:'right'});
+  }
+
+  const fname = `Planning_Semaine_${dstr(mon)}${member?'_'+member.nom.replace(/[^a-zA-Z0-9]/g,'_'):''}.pdf`;
+  doc.save(fname);
+  toast('📄 PDF de la semaine téléchargé !');
+}
+
+function setShift(period){
+  if (period==='journee'){
+    document.getElementById('tHeure').value = '08:00';
+    document.getElementById('tDuree').value = '540'; // 08:00 à 17:00
+    return;
+  }
+  document.getElementById('tHeure').value = period==='matin' ? '08:00' : '13:00';
+  document.getElementById('tDuree').value = '240'; // matin 08:00-12:00, après-midi 13:00-17:00
+}
+
+// ══════════════════════════════════════════════════
+// INTERVENTIONS
+// ══════════════════════════════════════════════════
+function populateMembreSelect(){
+  const wrap = document.getElementById('tMembreList');
+  const prevChecked = new Set([...wrap.querySelectorAll('input:checked')].map(i=>i.value));
+  wrap.innerHTML = team.length
+    ? team.map(m=>`<label class="tmembre-row">
+        <input type="checkbox" value="${m.id}"${prevChecked.has(m.id)?' checked':''} onclick="onTMembreCheckClick(this)">
+        <span class="member-chip"><span class="m-avatar-mini" style="background:${m.couleur};">${initiales(m.nom)}</span>${esc(m.nom)}${m.role?' — '+esc(m.role):''}</span>
+      </label>`).join('')
+    : '<div class="conge-empty">Aucun membre dans l\'équipe.</div>';
+}
+// En édition, un seul membre reste cochable à la fois (comportement radio) ; en création, plusieurs sont possibles.
+function onTMembreCheckClick(cb){
+  if (editingTaskId && cb.checked){
+    document.querySelectorAll('#tMembreList input').forEach(i=>{ if (i!==cb) i.checked=false; });
+  }
+  updateMembreDropdownLabel();
+}
+function selectedMembreIds(){
+  return [...document.querySelectorAll('#tMembreList input:checked')].map(i=>i.value);
+}
+function updateMembreDropdownLabel(){
+  const ids = selectedMembreIds();
+  const label = document.getElementById('tMembreDropdownLabel');
+  if (!ids.length){ label.textContent = 'Sélectionner…'; return; }
+  if (ids.length===1){ const m=membreById(ids[0]); label.textContent = m?m.nom:'1 membre sélectionné'; return; }
+  label.textContent = `${ids.length} membres sélectionnés`;
+}
+function toggleMembreDropdown(e){
+  if (e) e.stopPropagation();
+  const list = document.getElementById('tMembreList');
+  list.style.display = list.style.display==='none' ? 'flex' : 'none';
+}
+document.addEventListener('click', e=>{
+  const list = document.getElementById('tMembreList');
+  if (list && list.style.display!=='none' && !e.target.closest('.tmembre-dropdown')) list.style.display='none';
+});
+
+function openTaskModal(taskId){
+  populateMembreSelect();
+  editingTaskId = taskId || null;
+  const t = editingTaskId ? taches.find(x=>x.id===editingTaskId) : null;
+  document.getElementById('taskModalTitle').innerHTML = t
+    ? `Modifier l'intervention${t.numero?` <span style="color:var(--text2);font-weight:600;font-size:13px;">#${t.numero}</span>`:''}`
+    : 'Nouvelle intervention';
+  document.getElementById('taskDeleteBtn').style.display = t ? 'flex' : 'none';
+  document.getElementById('tTitre').value = t ? t.titre : '';
+  document.getElementById('tLieu').value = t ? (t.lieu||'') : '';
+  document.getElementById('tDescription').value = t ? (t.description||'') : '';
+  document.querySelectorAll('#tMembreList input').forEach(i=>{ i.checked = t ? i.value===t.membreId : false; });
+  document.getElementById('tMembreHint').textContent = t ? '' : '(plusieurs possibles)';
+  document.getElementById('tMembreList').style.display = 'none';
+  updateMembreDropdownLabel();
+  document.getElementById('tStatut').value = t ? t.statut : 'planifiee';
+  document.getElementById('tDate').value = t ? (t.date||'') : dstr(currentDate);
+  document.getElementById('tHeure').value = t ? (t.heure||'09:00') : '09:00';
+  document.getElementById('tDuree').value = t ? String(t.duree||60) : '60';
+  const photos = t ? getSourcePhotos(t) : [];
+  modalSourcePhotos = photos;
+  document.getElementById('tPhotosGroup').style.display = photos.length ? 'flex' : 'none';
+  document.getElementById('tPhotosGrid').innerHTML = photos.map((src,i)=>`<div class="task-photo-thumb" onclick="openModalSourcePhoto(${i})"><img src="${src}"></div>`).join('');
+  modalDocuments = t ? (t.documents||[]).slice() : [];
+  renderModalDocuments();
+  extraDays.clear();
+  document.getElementById('tExtraDaysGroup').style.display = t ? 'none' : 'block';
+  renderExtraDaysChips();
+  document.getElementById('taskModal').classList.add('open');
+}
+function closeTaskModal(){ document.getElementById('taskModal').classList.remove('open'); editingTaskId=null; modalDocuments=[]; extraDays.clear(); }
+
+// ── PLANIFICATION SUR PLUSIEURS JOURS DE LA SEMAINE (création uniquement) ──
+let extraDays = new Set(); // dates 'YYYY-MM-DD' additionnelles, en plus de tDate
+function renderExtraDaysChips(){
+  const mon = mondayOf(currentDate);
+  const primaryDate = document.getElementById('tDate').value;
+  const wrap = document.getElementById('tExtraDaysChips');
+  wrap.innerHTML = JOURS_SEMAINE.map((label,i)=>{
+    const d = new Date(mon); d.setDate(d.getDate()+i);
+    const ds = dstr(d);
+    const isPrimary = ds===primaryDate;
+    const isWeekendOff = isWeekendBlocked(ds);
+    const disabled = isPrimary || isWeekendOff;
+    const isActive = extraDays.has(ds);
+    const title = isPrimary ? 'Déjà sélectionné comme date principale' : isWeekendOff ? 'Week-end verrouillé — activez-le dans Paramètres' : d.getDate()+' '+MOIS_NOMS[d.getMonth()].toLowerCase();
+    return `<label class="day-check${disabled?' disabled':''}" title="${title}">
+      <input type="checkbox"${isActive?' checked':''}${disabled?' disabled':''} onclick="toggleExtraDay('${ds}')">
+      <span>${label} ${d.getDate()} ${MOIS_NOMS[d.getMonth()].toLowerCase()}${isWeekendOff?' 🔒':''}</span>
+    </label>`;
+  }).join('');
+}
+function toggleExtraDay(ds){
+  if (extraDays.has(ds)) extraDays.delete(ds); else extraDays.add(ds);
+  renderExtraDaysChips();
+}
+function clearExtraDays(){ extraDays.clear(); renderExtraDaysChips(); }
+
+// ── PHOTOS & PDF JOINTS (indépendants des photos MaintenancePro, éditables directement ici) ──
+let modalDocuments = [];
+let modalSourcePhotos = [];
+// N'insère jamais une data URI (base64, potentiellement volumineuse et porteuse de guillemets
+// après JSON.stringify) directement dans un attribut onclick : on référence l'élément par index
+// dans le tableau JS et on ouvre via window.open() côté script.
+function openModalSourcePhoto(i){ const src = modalSourcePhotos[i]; if (src) window.open(src, '_blank'); }
+function openModalDocument(i){ const d = modalDocuments[i]; if (d) window.open(d.data, '_blank'); }
+function renderModalDocuments(){
+  const grid = document.getElementById('tDocsGrid');
+  grid.innerHTML = modalDocuments.map((d,i)=>{
+    if (d.type==='pdf'){
+      return `<div class="task-photo-thumb pdf-thumb" onclick="openModalDocument(${i})">
+        <button class="task-doc-remove" onclick="event.stopPropagation();removeModalDocument(${i})" title="Retirer">×</button>
+        <span class="pdf-icon">📄</span><span class="pdf-name">${esc(d.name||'document.pdf')}</span>
+      </div>`;
+    }
+    return `<div class="task-photo-thumb" onclick="openModalDocument(${i})">
+      <button class="task-doc-remove" onclick="event.stopPropagation();removeModalDocument(${i})" title="Retirer">×</button>
+      <img src="${d.data}">
+    </div>`;
+  }).join('');
+}
+function addModalDocuments(fileList){
+  const files = Array.from(fileList||[]);
+  if (!files.length) return;
+  Promise.all(files.map(file => new Promise(resolve => {
+    if (!/^image\//.test(file.type) && file.type!=='application/pdf'){ resolve(null); return; }
+    const reader = new FileReader();
+    reader.onload = e => resolve({ type: file.type==='application/pdf'?'pdf':'photo', name: file.name, data: e.target.result });
+    reader.readAsDataURL(file);
+  }))).then(results => {
+    results.filter(Boolean).forEach(d => modalDocuments.push(d));
+    renderModalDocuments();
+  });
+}
+function removeModalDocument(i){ modalDocuments.splice(i,1); renderModalDocuments(); }
+
+function saveTask(){
+  const titre = document.getElementById('tTitre').value.trim();
+  if (!titre){ toast('⚠️ Le titre est requis'); return; }
+  const date = document.getElementById('tDate').value;
+  const ferie = date ? isJourFerie(date) : null;
+  if (ferie){ toast(`🎌 Jour férié (${ferie}) : impossible de planifier une intervention ce jour`); return; }
+  if (isWeekendBlocked(date)){ toast('🔒 Week-end verrouillé — activez-le dans ⚙️ Paramètres pour planifier ce jour'); return; }
+  const membreIds = selectedMembreIds();
+  if (!membreIds.length){ toast('⚠️ Sélectionnez au moins un membre'); return; }
+
+  const basePayload = {
+    titre,
+    lieu: document.getElementById('tLieu').value.trim(),
+    description: document.getElementById('tDescription').value.trim(),
+    statut: document.getElementById('tStatut').value,
+    date: date,
+    heure: date ? (document.getElementById('tHeure').value || '09:00') : '',
+    duree: Number(document.getElementById('tDuree').value)
+  };
+
+  // Les interventions planifiées doivent rester dans la plage horaire de travail 08:00-17:00.
+  if (date && basePayload.heure){
+    const [hh,mm] = basePayload.heure.split(':').map(Number);
+    const startMin = hh*60+mm;
+    const endMin = startMin + basePayload.duree;
+    if (startMin < 8*60 || endMin > 17*60){
+      toast('⚠️ Les interventions doivent être planifiées entre 08:00 et 17:00');
+      return;
+    }
+  }
+
+  if (editingTaskId){
+    const membreId = membreIds[0];
+    const conge = date ? congeFor(membreId, date) : null;
+    if (conge){ const m=membreById(membreId); toast(`🚫 ${m?m.nom:'Ce membre'} est en ${conge.type.toLowerCase()} du ${fmtDateShort(conge.debut)} au ${fmtDateShort(conge.fin)}`); return; }
+    const t = taches.find(x=>x.id===editingTaskId);
+    if (t) Object.assign(t, basePayload, {membreId, documents: modalDocuments.slice()});
+    toast('✅ Intervention modifiée');
+    saveTaches(); closeTaskModal(); refreshMain(); renderBacklog();
+    return;
+  }
+
+  // Création : produit de toutes les dates cochées (date principale + jours supplémentaires)
+  // par tous les membres cochés. Les combinaisons en congé sont ignorées silencieusement.
+  const dates = Array.from(new Set([date, ...extraDays]));
+  let created = 0, skippedConge = 0;
+  let firstDone = false;
+  dates.forEach(ds=>{
+    if (ds && ds!==date && isJourFerie(ds)) return; // jour férié parmi les jours cochés
+    if (ds && ds!==date && isWeekendBlocked(ds)) return; // week-end verrouillé parmi les jours cochés
+    membreIds.forEach(mid=>{
+      if (ds && congeFor(mid, ds)){ skippedConge++; return; }
+      const creeLe = dstr(new Date());
+      taches.push({
+        id: uid(), creeLe, numero: nextInterventionNumero(creeLe),
+        ...basePayload, date: ds, membreId: mid,
+        documents: !firstDone ? modalDocuments.slice() : []
+      });
+      firstDone = true;
+      created++;
+    });
+  });
+  if (!created){ toast('⚠️ Aucune intervention créée (congés ou jours fériés sur toutes les combinaisons)'); return; }
+  const parts = [];
+  if (dates.length>1) parts.push(`${dates.length} jours`);
+  if (membreIds.length>1) parts.push(`${membreIds.length} membres`);
+  toast(parts.length ? `✅ ${created} intervention(s) créée(s) (${parts.join(' × ')})${skippedConge?`, ${skippedConge} ignorée(s) pour congé`:''}` : (date ? '✅ Intervention planifiée' : '✅ Intervention ajoutée aux non planifiées'));
+  saveTaches(); closeTaskModal(); refreshMain(); renderBacklog();
+}
+
+function deleteFromModal(){
+  if (!editingTaskId) return;
+  const id = editingTaskId;
+  closeTaskModal();
+  deleteTask(id);
+}
+
+function deleteTask(id){
+  const t = taches.find(x=>x.id===id);
+  if (!t) return;
+  confirm2('Supprimer cette intervention ?', `« ${t.titre} » sera définitivement supprimée.`, ()=>{
+    taches = taches.filter(x=>x.id!==id);
+    saveTaches(); refreshMain(); renderBacklog();
+    toast('🗑️ Intervention supprimée');
+  });
+}
+
+// ══════════════════════════════════════════════════
+// CLIC DROIT — DUPLIQUER UNE INTERVENTION (vue Semaine) POUR PLUSIEURS MEMBRES
+// ══════════════════════════════════════════════════
+let ctxMenuTaskId = null;
+let duplicateTargetTaskId = null;
+
+function onTaskContextMenu(e, taskId){
+  e.preventDefault();
+  ctxMenuTaskId = taskId;
+  const menu = document.getElementById('taskCtxMenu');
+  const mx = Math.min(e.clientX, window.innerWidth-200);
+  const my = Math.min(e.clientY, window.innerHeight-60);
+  menu.style.left = mx+'px';
+  menu.style.top = my+'px';
+  menu.classList.add('open');
+}
+function closeCtxMenu(){ document.getElementById('taskCtxMenu').classList.remove('open'); }
+document.addEventListener('click', closeCtxMenu);
+document.addEventListener('scroll', closeCtxMenu, true);
+document.addEventListener('keydown', e=>{ if (e.key==='Escape') closeCtxMenu(); });
+
+function openDuplicateForMembers(){
+  closeCtxMenu();
+  const t = taches.find(x=>x.id===ctxMenuTaskId);
+  if (!t) return;
+  duplicateTargetTaskId = t.id;
+  const wrap = document.getElementById('dupMembersList');
+  wrap.innerHTML = team.length ? team.map(m=>`<label class="dup-member-row">
+    <input type="checkbox" value="${m.id}"${m.id===t.membreId?' checked':''}>
+    <span class="member-chip"><span class="m-avatar-mini" style="background:${m.couleur};">${initiales(m.nom)}</span>${m.nom}</span>
+  </label>`).join('') : '<div class="conge-empty">Aucun membre dans l\'équipe.</div>';
+  document.getElementById('dupModal').classList.add('open');
+}
+function closeDupModal(){ document.getElementById('dupModal').classList.remove('open'); duplicateTargetTaskId=null; }
+function confirmDuplicate(){
+  const t = taches.find(x=>x.id===duplicateTargetTaskId);
+  if (!t) return;
+  const checked = [...document.querySelectorAll('#dupMembersList input:checked')].map(i=>i.value);
+  if (!checked.length){ toast('⚠️ Sélectionnez au moins un membre'); return; }
+  let created = 0;
+  checked.forEach(mid=>{
+    const creeLe = dstr(new Date());
+    taches.push({
+      id: uid(), creeLe, numero: nextInterventionNumero(creeLe),
+      titre: t.titre, lieu: t.lieu, description: t.description||'',
+      membreId: mid, statut: 'planifiee',
+      date: t.date, heure: t.heure, duree: t.duree,
+      documents: []
+    });
+    created++;
+  });
+  saveTaches();
+  closeDupModal();
+  refreshMain(); renderBacklog();
+  toast(`📋 ${created} copie${created>1?'s':''} créée${created>1?'s':''}`);
+}
+
+// ── DUPLICATION SUR PLUSIEURS JOURS DE LA SEMAINE ──
+function openDuplicateForDays(){
+  closeCtxMenu();
+  const t = taches.find(x=>x.id===ctxMenuTaskId);
+  if (!t || !t.date) return;
+  duplicateTargetTaskId = t.id;
+  const mon = mondayOf(new Date(t.date+'T00:00:00'));
+  const wrap = document.getElementById('dupDaysList');
+  wrap.innerHTML = JOURS_SEMAINE.map((label,i)=>{
+    const d = new Date(mon); d.setDate(d.getDate()+i);
+    const ds = dstr(d);
+    const isOrigin = ds===t.date;
+    const isWeekendOff = isWeekendBlocked(ds);
+    const disabled = isOrigin || isWeekendOff;
+    const title = isOrigin ? "Jour d'origine de l'intervention" : isWeekendOff ? 'Week-end verrouillé — activez-le dans Paramètres' : '';
+    return `<label class="day-check${disabled?' disabled':''}" title="${title}">
+      <input type="checkbox" value="${ds}"${disabled?' disabled':''}>
+      <span>${label} ${d.getDate()} ${MOIS_NOMS[d.getMonth()].toLowerCase()}${isWeekendOff?' 🔒':''}</span>
+    </label>`;
+  }).join('');
+  document.getElementById('dupDaysModal').classList.add('open');
+}
+function closeDupDaysModal(){ document.getElementById('dupDaysModal').classList.remove('open'); duplicateTargetTaskId=null; }
+function confirmDuplicateDays(){
+  const t = taches.find(x=>x.id===duplicateTargetTaskId);
+  if (!t) return;
+  const checked = [...document.querySelectorAll('#dupDaysList input:checked')].map(i=>i.value);
+  if (!checked.length){ toast('⚠️ Sélectionnez au moins un jour'); return; }
+  let created = 0, skipped = 0;
+  checked.forEach(ds=>{
+    if (isJourFerie(ds) || isWeekendBlocked(ds) || congeFor(t.membreId, ds)){ skipped++; return; }
+    const creeLe = dstr(new Date());
+    taches.push({
+      id: uid(), creeLe, numero: nextInterventionNumero(creeLe),
+      titre: t.titre, lieu: t.lieu, description: t.description||'',
+      membreId: t.membreId, statut: 'planifiee',
+      date: ds, heure: t.heure, duree: t.duree,
+      documents: []
+    });
+    created++;
+  });
+  saveTaches();
+  closeDupDaysModal();
+  refreshMain(); renderBacklog();
+  toast(created ? `📆 ${created} copie${created>1?'s':''} créée${created>1?'s':''}${skipped?`, ${skipped} ignorée(s) (férié/congé)`:''}` : '⚠️ Aucune copie créée (jours en congé ou fériés)');
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+renderTeam();
+populateMembreSelect();
+updateFilterChip();
+loadCalendarCache();
+setView('mois');
+renderBacklog();
+refreshCalendarData();
+
+// Resynchronise si un autre onglet (ex: MaintenancePro) modifie les interventions/l'équipe en localStorage
+window.addEventListener('storage', (e)=>{
+  if (e.key === TASKS_KEY){
+    taches = JSON.parse(localStorage.getItem(TASKS_KEY) || 'null') || [];
+    refreshMain(); renderBacklog();
+    toast('🔄 Nouvelles interventions reçues de MaintenancePro');
+  } else if (e.key === TEAM_KEY){
+    team = JSON.parse(localStorage.getItem(TEAM_KEY) || 'null') || [];
+    renderTeam(); populateMembreSelect(); refreshMain(); renderBacklog();
+  }
+});
+
+if ('serviceWorker' in navigator){ navigator.serviceWorker.register('./sw-planneur.js').catch(()=>{}); }
+</script>
+</body>
+</html>

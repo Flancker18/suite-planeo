@@ -1,0 +1,1689 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1e3a5f" id="themeColor">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MaintenancePro">
+<title>MaintenancePro — Bâtiments</title>
+<link rel="manifest" href="manifest.json">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&display=swap');
+
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface2: #eef1f5;
+  --navy: #1e3a5f;
+  --navy2: #2a4f7a;
+  --gold: #e8a020;
+  --gold2: #f5b840;
+  --text: #1a2332;
+  --text2: #5a6a7a;
+  --border: #dde3ea;
+  --danger: #d63031;
+  --success: #00b894;
+  --warning: #fdcb6e;
+  --info: #0984e3;
+  --shadow: 0 2px 12px rgba(30,58,95,0.08);
+  --shadow-lg: 0 8px 32px rgba(30,58,95,0.14);
+  --radius: 12px;
+  --safe-top: env(safe-area-inset-top,0px);
+  --safe-bottom: env(safe-area-inset-bottom,0px);
+}
+body.dark {
+  --bg: #0a1520;
+  --surface: #112030;
+  --surface2: #162840;
+  --navy: #1e3a5f;
+  --navy2: #2a4f7a;
+  --gold: #f0aa30;
+  --text: #e8eef5;
+  --text2: #7a9ab5;
+  --border: #1e3050;
+  --shadow: 0 2px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100dvh;overflow:hidden;font-size:14px;transition:background .2s,color .2s;}
+
+/* ── LAYOUT ── */
+.app{display:flex;height:100dvh;overflow:hidden;}
+.sidebar{width:280px;background:var(--navy);display:flex;flex-direction:column;flex-shrink:0;transition:transform .25s;z-index:20;}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+/* ── SIDEBAR ── */
+.sidebar-logo{padding:20px 20px 16px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.logo-title{font-family:'DM Serif Display',serif;font-size:20px;color:#fff;letter-spacing:-.3px;}
+.logo-title span{color:var(--gold);font-style:italic;}
+.logo-sub{font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px;letter-spacing:.5px;text-transform:uppercase;}
+
+/* ── APP SWITCHER ── */
+.app-switcher{display:flex;gap:8px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.app-tile{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 6px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);cursor:pointer;text-decoration:none;transition:all .15s;}
+.app-tile:hover{background:rgba(255,255,255,0.12);}
+.app-tile.active{background:rgba(232,160,32,0.18);border-color:rgba(232,160,32,0.45);cursor:default;}
+.app-tile-icon{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-family:'DM Serif Display',serif;}
+.app-tile-label{font-size:10px;font-weight:600;color:rgba(255,255,255,0.7);text-align:center;line-height:1.2;}
+.app-tile.active .app-tile-label{color:#fff;}
+
+.sidebar-search{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.s-search{width:100%;padding:8px 12px 8px 34px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;font-family:'Inter',sans-serif;font-size:13px;outline:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.4)' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:10px center;}
+.s-search::placeholder{color:rgba(255,255,255,0.35);}
+.s-search:focus{border-color:var(--gold);background-color:rgba(255,255,255,0.12);}
+
+.sidebar-filters{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;gap:6px;flex-wrap:wrap;}
+.filter-chip{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.6);transition:all .15s;white-space:nowrap;}
+.filter-chip.active{background:var(--gold);border-color:var(--gold);color:#1a1a00;}
+.filter-chip:hover:not(.active){border-color:rgba(255,255,255,0.4);color:#fff;}
+
+.gamme-list{flex:1;overflow-y:auto;padding:8px;}
+.gamme-list::-webkit-scrollbar{width:3px;}
+.gamme-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px;}
+
+.gamme-item{padding:12px 14px;border-radius:10px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;transition:all .15s;position:relative;}
+.gamme-item:hover{background:rgba(255,255,255,0.07);}
+.gamme-item.active{background:rgba(232,160,32,0.15);border-color:rgba(232,160,32,0.4);}
+.gamme-item-name{font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gamme-item-bat{font-size:11px;color:rgba(255,255,255,0.45);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gamme-item-footer{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;}
+
+.sidebar-bottom{padding:12px 14px;border-top:1px solid rgba(255,255,255,0.08);display:flex;gap:8px;}
+.sb-btn{flex:1;padding:9px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:rgba(255,255,255,0.7);font-family:'Inter',sans-serif;font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:all .15s;}
+.sb-btn:hover{background:rgba(255,255,255,0.14);color:#fff;}
+.sb-btn.new-btn{background:var(--gold);border-color:var(--gold);color:#1a1a00;font-weight:700;}
+.sb-btn.new-btn:hover{background:var(--gold2);}
+
+/* ── STATUS BADGES ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;}
+.badge-planifiee{background:rgba(9,132,227,0.2);color:#0984e3;}
+.badge-en_cours{background:rgba(232,160,32,0.25);color:#c8880a;}
+.badge-terminee{background:rgba(0,184,148,0.2);color:#00a07a;}
+body.dark .badge-planifiee{background:rgba(9,132,227,0.3);color:#4db8ff;}
+body.dark .badge-en_cours{background:rgba(232,160,32,0.3);color:var(--gold);}
+body.dark .badge-terminee{background:rgba(0,184,148,0.25);color:#00d4a8;}
+
+.badge-haute{background:rgba(214,48,49,0.15);color:#d63031;}
+.badge-moyenne{background:rgba(232,160,32,0.2);color:#c8880a;}
+.badge-basse{background:rgba(90,106,122,0.15);color:#5a6a7a;}
+body.dark .badge-haute{background:rgba(214,48,49,0.3);color:#ff6b6b;}
+body.dark .badge-basse{background:rgba(90,106,122,0.2);color:#9ab5cc;}
+
+.badge-amiante{background:rgba(214,48,49,0.15);color:#d63031;font-size:10px;}
+body.dark .badge-amiante{background:rgba(214,48,49,0.3);color:#ff6b6b;}
+
+/* ── TOP BAR ── */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;gap:12px;flex-shrink:0;box-shadow:var(--shadow);}
+.topbar-title{font-size:16px;font-weight:700;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.topbar-sub{font-size:12px;color:var(--text2);font-weight:400;margin-left:8px;}
+.tb-btn{padding:7px 14px;border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:none;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.tb-btn:active{transform:scale(.97);}
+.tb-primary{background:var(--navy);color:#fff;}
+.tb-primary:hover{background:var(--navy2);}
+.tb-gold{background:var(--gold);color:#1a1a00;}
+.tb-gold:hover{background:var(--gold2);}
+.tb-ghost{background:var(--surface2);color:var(--text);}
+.tb-ghost:hover{background:var(--border);}
+.tb-danger{background:rgba(214,48,49,0.1);color:var(--danger);border:1px solid rgba(214,48,49,0.2);}
+.tb-danger:hover{background:var(--danger);color:#fff;}
+.tb-icon{width:34px;height:34px;border-radius:8px;background:var(--surface2);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--text2);transition:all .15s;}
+.tb-icon:hover{background:var(--border);color:var(--text);}
+
+/* ── CONTENT ── */
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.content::-webkit-scrollbar{width:5px;}
+.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* ── WELCOME / DASHBOARD ── */
+.dashboard{padding:28px;}
+.dash-header{margin-bottom:24px;}
+.dash-title{font-family:'DM Serif Display',serif;font-size:26px;color:var(--text);margin-bottom:4px;}
+.dash-sub{font-size:13px;color:var(--text2);}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);transition:transform .15s;}
+.stat-card:hover{transform:translateY(-2px);}
+.stat-num{font-size:28px;font-weight:700;margin-bottom:4px;}
+.stat-label{font-size:12px;color:var(--text2);font-weight:500;}
+.stat-card.navy .stat-num{color:var(--navy);}
+.stat-card.gold .stat-num{color:var(--gold);}
+.stat-card.success .stat-num{color:var(--success);}
+.stat-card.danger .stat-num{color:var(--danger);}
+.dash-section-title{font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;}
+.recent-list{display:flex;flex-direction:column;gap:8px;}
+.recent-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);transition:all .15s;}
+.recent-item:hover{border-color:var(--navy);transform:translateX(3px);}
+.recent-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.dot-planifiee{background:var(--info);}
+.dot-en_cours{background:var(--gold);}
+.dot-terminee{background:var(--success);}
+.recent-info{flex:1;min-width:0;}
+.recent-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.recent-bat{font-size:12px;color:var(--text2);margin-top:2px;}
+.recent-right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
+
+/* ── GAMME DETAIL ── */
+.detail-wrap{padding:24px;max-width:960px;}
+.detail-hero{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:20px;box-shadow:var(--shadow);}
+.detail-name{font-family:'DM Serif Display',serif;font-size:24px;color:var(--text);margin-bottom:8px;}
+.detail-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px;}
+.dchip{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.dchip-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);font-weight:700;margin-bottom:4px;}
+.dchip-val{font-size:14px;font-weight:600;color:var(--text);}
+
+.pts-section{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:20px;}
+.pts-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.pts-title{font-size:14px;font-weight:700;flex:1;}
+.pts-count{background:var(--navy);color:#fff;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:700;}
+
+.pt-card{border-bottom:1px solid var(--border);padding:16px 20px;transition:background .15s;cursor:pointer;}
+.pt-card:last-child{border-bottom:none;}
+.pt-card:hover{background:var(--bg);}
+.pt-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;}
+.pt-num{width:26px;height:26px;background:var(--navy);color:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;}
+.pt-name{font-size:14px;font-weight:600;flex:1;line-height:1.3;}
+.pt-badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+.pt-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;background:var(--bg);border-radius:8px;padding:10px 12px;}
+.pt-meta-item{display:flex;flex-direction:column;gap:2px;}
+.pt-meta-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);font-weight:600;}
+.pt-meta-val{font-size:12px;font-weight:600;color:var(--text);}
+.pt-comment{margin-top:10px;font-size:13px;color:var(--text2);line-height:1.5;padding:10px 12px;background:var(--bg);border-radius:8px;border-left:3px solid var(--navy);}
+
+.amiante-alert{background:rgba(214,48,49,0.08);border:1px solid rgba(214,48,49,0.25);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--danger);font-weight:600;margin-top:8px;}
+
+/* ── FORM ── */
+.form-wrap{padding:24px;max-width:800px;}
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:var(--shadow);margin-bottom:18px;}
+.form-section-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.form-section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+.fields-grid{display:grid;gap:14px;}
+.fields-grid.col2{grid-template-columns:1fr 1fr;}
+.fields-grid.col3{grid-template-columns:1fr 1fr 1fr;}
+.field-group{display:flex;flex-direction:column;gap:5px;}
+.field-group.full{grid-column:1/-1;}
+.field-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text2);}
+.field-input,.field-select,.field-textarea{padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;font-family:'Inter',sans-serif;font-size:14px;color:var(--text);background:var(--bg);outline:none;transition:border-color .2s,box-shadow .2s;width:100%;}
+.field-input:focus,.field-select:focus,.field-textarea:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,58,95,0.1);}
+.field-textarea{resize:vertical;min-height:80px;}
+.field-select{cursor:pointer;}
+
+/* PT form */
+.pt-form-block{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;position:relative;}
+.pt-form-num{position:absolute;top:12px;left:14px;width:22px;height:22px;background:var(--navy);color:#fff;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;}
+.pt-form-inner{padding-left:30px;}
+.pt-del-btn{position:absolute;top:10px;right:10px;background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:4px;border-radius:6px;line-height:1;transition:all .15s;}
+.pt-del-btn:hover{color:var(--danger);background:rgba(214,48,49,0.1);}
+.add-pt-btn{width:100%;padding:12px;border:2px dashed var(--border);background:none;border-radius:10px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;}
+.add-pt-btn:hover{border-color:var(--navy);color:var(--navy);}
+
+/* ── ÉTAT COLORS ── */
+.etat-bon_etat{color:#00b894;}
+.etat-mauvais_etat{color:#e17055;}
+.etat-tres_mauvais_etat{color:#d63031;}
+.etat-a_remplacer{color:#d63031;}
+.etat-conforme{color:#00b894;}
+.etat-non_conforme{color:#d63031;}
+.etat-non_verifie{color:#5a6a7a;}
+
+/* ── PHOTOS ── */
+.photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;}
+.photo-thumb{aspect-ratio:1;border-radius:8px;overflow:hidden;background:var(--surface2);border:1px solid var(--border);position:relative;cursor:pointer;}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.photo-del{position:absolute;top:3px;right:3px;background:rgba(0,0,0,0.6);border:none;border-radius:50%;width:20px;height:20px;color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.add-photo{aspect-ratio:1;border-radius:8px;border:2px dashed var(--border);background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s;}
+.add-photo:hover{border-color:var(--navy);color:var(--navy);}
+.add-photo span{font-size:22px;}
+
+/* ── SIGNATURE ── */
+.sig-canvas-wrap{background:var(--bg);border:1.5px solid var(--border);border-radius:10px;overflow:hidden;}
+#sigCanvas{display:block;width:100%;cursor:crosshair;touch-action:none;}
+.sig-bar{display:flex;gap:8px;padding:8px 12px;background:var(--surface);border-top:1px solid var(--border);}
+.sig-btn{padding:6px 14px;border-radius:7px;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;}
+.sig-clear-btn{background:var(--surface2);color:var(--text2);}
+.sig-save-btn{background:var(--navy);color:#fff;margin-left:auto;}
+
+/* ── IMPORT ── */
+.import-zone{border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;cursor:pointer;transition:all .2s;}
+.import-zone:hover,.import-zone.drag{border-color:var(--navy);background:rgba(30,58,95,0.04);}
+.import-zone .iz-icon{font-size:40px;margin-bottom:12px;}
+.import-zone p{font-size:14px;color:var(--text2);}
+.import-zone strong{color:var(--text);}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--text);color:var(--bg);padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);transform:translateY(60px);opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);z-index:500;display:flex;align-items:center;gap:8px;max-width:340px;}
+.toast.show{transform:translateY(0);opacity:1;}
+
+/* ── MODAL ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(3px);}
+.modal-bg.open{display:flex;}
+.modal-box{background:var(--surface);border-radius:16px;padding:24px;width:min(480px,95vw);box-shadow:var(--shadow-lg);animation:scaleIn .2s cubic-bezier(.34,1.2,.64,1);}
+@keyframes scaleIn{from{opacity:0;transform:scale(.95);}to{opacity:1;transform:scale(1);}}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:16px;}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;}
+
+/* ── MOBILE ── */
+.menu-toggle{display:none;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:4px;line-height:1;}
+.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:15;}
+
+@media(max-width:768px){
+  .sidebar{position:fixed;top:0;left:0;height:100dvh;transform:translateX(-100%);z-index:20;}
+  .sidebar.open{transform:translateX(0);}
+  .sidebar-overlay.open{display:block;}
+  .menu-toggle{display:block;}
+  .stats-row{grid-template-columns:repeat(2,1fr);}
+  .detail-chips{grid-template-columns:repeat(2,1fr);}
+  .fields-grid.col2,.fields-grid.col3{grid-template-columns:1fr;}
+  .pt-meta{grid-template-columns:repeat(2,1fr);}
+  .topbar{padding:0 14px;}
+  .detail-wrap,.form-wrap,.dashboard{padding:14px;}
+}
+
+/* ── ANIMATIONS ── */
+.fade-in{animation:fadeIn .2s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── SIDEBAR ── -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-title">Maintenance<span>Pro</span></div>
+      <div class="logo-sub">Gestion bâtiments</div>
+    </div>
+    <div class="app-switcher">
+      <div class="app-tile active" title="Application actuelle">
+        <div class="app-tile-icon" style="background:var(--gold);color:#1a1a00;">M</div>
+        <div class="app-tile-label">MaintenancePro</div>
+      </div>
+      <a class="app-tile" href="planneur.html" onclick="return openApp(event,'planneur.html')" title="Ouvrir Maintenance Planneur dans un nouvel onglet">
+        <div class="app-tile-icon" style="background:var(--info);color:#fff;">P</div>
+        <div class="app-tile-label">Planneur</div>
+      </a>
+    </div>
+    <div class="sidebar-search">
+      <input class="s-search" type="search" id="sSearch" placeholder="Rechercher...">
+    </div>
+    <div class="sidebar-filters" id="sFilters">
+      <div class="filter-chip active" data-filter="all" onclick="setFilter('all',this)">Tout</div>
+      <div class="filter-chip" data-filter="planifiee" onclick="setFilter('planifiee',this)">Planifiée</div>
+      <div class="filter-chip" data-filter="en_cours" onclick="setFilter('en_cours',this)">En cours</div>
+      <div class="filter-chip" data-filter="terminee" onclick="setFilter('terminee',this)">Terminée</div>
+    </div>
+    <div class="gamme-list" id="gammeList"></div>
+    <div class="sidebar-bottom">
+      <button class="sb-btn new-btn" onclick="showForm(null)">＋ Nouveau</button>
+      <button class="sb-btn" onclick="showDashboard()" title="Tableau de bord">📊</button>
+      <button class="sb-btn" style="flex:0 0 auto;" onclick="toggleDark()" id="darkBtn" title="Mode sombre">🌙</button>
+      <button class="sb-btn" style="flex:0 0 auto;" onclick="openSettings()" title="Paramètres">⚙️</button>
+      <button class="sb-btn" onclick="showImport()" title="Importer">📥</button>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <div class="topbar" id="topbar">
+      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <div class="topbar-title" id="topbarTitle">MaintenancePro</div>
+      <div id="topbarActions"></div>
+    </div>
+    <div class="content" id="mainContent"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+<!-- MODAL CONFIRM -->
+<div class="modal-bg" id="confirmModal">
+  <div class="modal-box">
+    <div class="modal-title" id="confirmTitle">Confirmer</div>
+    <div id="confirmMsg" style="font-size:14px;color:var(--text2);line-height:1.5;"></div>
+    <div class="modal-actions">
+      <button class="tb-btn tb-ghost" onclick="closeConfirm()">Annuler</button>
+      <button class="tb-btn" id="confirmOkBtn" style="background:var(--danger);color:#fff;">Supprimer</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL PARAMÈTRES -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal-box">
+    <div class="modal-title">⚙️ Paramètres</div>
+
+    <div style="margin-bottom:22px;">
+      <div style="font-weight:600;font-size:13px;color:var(--text2);margin-bottom:8px;">Apparence</div>
+      <div style="display:flex;gap:8px;">
+        <button class="tb-btn tb-ghost" id="themeLightBtn" style="flex:1;justify-content:center;" onclick="setTheme('light')">☀️ Clair</button>
+        <button class="tb-btn tb-ghost" id="themeDarkBtn" style="flex:1;justify-content:center;" onclick="setTheme('dark')">🌙 Sombre</button>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-weight:600;font-size:13px;color:var(--text2);margin-bottom:8px;">Sauvegarde des données</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;">Exportez un fichier JSON de secours (gammes, équipe, planning, congés) ou restaurez une sauvegarde précédente. L'import remplace les données actuelles.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="tb-btn tb-gold" style="flex:1;justify-content:center;" onclick="exportData()">⬇️ Exporter</button>
+        <button class="tb-btn tb-ghost" style="flex:1;justify-content:center;" onclick="document.getElementById('backupFileInput').click()">⬆️ Importer</button>
+      </div>
+      <input type="file" id="backupFileInput" accept="application/json" style="display:none;" onchange="importDataFile(this)">
+    </div>
+
+    <div class="modal-actions">
+      <button class="tb-btn tb-ghost" onclick="closeSettings()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- PHOTO VIEWER -->
+<div class="modal-bg" id="photoViewer" onclick="closePhotoViewer()">
+  <img id="photoViewerImg" style="max-width:95vw;max-height:90dvh;border-radius:12px;object-fit:contain;">
+</div>
+<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
+
+<script>
+// ══════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════
+const STORAGE_KEY = 'maintenancepro_data';
+
+const INITIAL_DATA = [
+  {
+    id:'g1', nom:'Collège Edouard Vaillant', batiment:'Collège Edouard Vaillant - Vierzon',
+    localisation:'', technicien:'', statut:'planifiee',
+    date_prevue:'', date_realisee:'', cree_le:'30/04/2026',
+    points:[{
+      id:'p1',num:1,nom:'Foyer - Réaménagement complet',categorie:'Menuiserie',
+      etat:'non_verifie',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',
+      commentaire:'Surface: 85 m²\nDAT réalisé: Aucun matériaux à risque détéctés\nCloisonnement, faux plafond, électricité, peinture et équipement sanitaires\nTravaux à prévoir en 2026 avec opération SCTB',
+      photos:[],signature:null
+    }]
+  },
+  {
+    id:'g2', nom:'Collège Louis Armand', batiment:'Collège Louis Armand',
+    localisation:'', technicien:'', statut:'planifiee',
+    date_prevue:'', date_realisee:'', cree_le:'30/04/2026',
+    points:[{
+      id:'p2',num:1,nom:'Salles 11 et 25 - Faux plafonds et pavés LED',categorie:'Électricité',
+      etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'oui',dat:true,dat_date:'2025-12-04',
+      commentaire:'Demande du collège le 24/06/2025\nDAT réalisé le 04/12/2025\nPrésence d\'amiante dans la colle des plinthes de la salle 11 et le sol de la salle 25\nVoir périmètre des travaux et si besoin d\'intervention régie pour réfection des peintures ou des sols',
+      photos:[],signature:null
+    }]
+  },
+  {
+    id:'g3', nom:'Collège B.Sully', batiment:'Ensemble des Bâtiments',
+    localisation:'', technicien:'Aubert Y', statut:'en_cours',
+    date_prevue:'2026-04-28', date_realisee:'', cree_le:'30/04/2026',
+    points:[
+      {id:'p3a',num:1,nom:'Bâtiment E extérieur - Nettoyage + peinture charpente métallique',categorie:'Peinture',etat:'mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Pas de DAT nécessaire.\nRéfection et mise en peinture du haut-vent ainsi que des mains courantes à l\'arrière du bâtiment. Surface: 50m2',photos:[],signature:null},
+      {id:'p3b',num:2,nom:'Cour - Mise en peinture mobiliers',categorie:'Peinture',etat:'mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Refection et mise en peinture des bancs, tables et table de tennis de table en béton de la cour. Surface: 50m2',photos:[],signature:null},
+      {id:'p3c',num:3,nom:'Bâtiment Administration - Couloir admin - ECL LED',categorie:'Électricité',etat:'bon_etat',priorite:'basse',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Mise en place de quatre pavés LED. Surface: 30m2',photos:[],signature:null},
+      {id:'p3d',num:4,nom:'Bâtiment A - Couloir WC - Réfection, peinture et déco-choc',categorie:'Peinture',etat:'tres_mauvais_etat',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Réfection des murs avant mise en peinture et voir pour pose de déco-choc. Remplacement des dalles de faux plafond. Surface: 16m2',photos:[],signature:null},
+      {id:'p3e',num:5,nom:'Bâtiment A extérieur - Nettoyage karcher et dégrisement façades',categorie:'Nettoyage',etat:'mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage des marches et façade au nettoyeur haute pression et passer produit de dégrisement. Surface: 100m2',photos:[],signature:null},
+      {id:'p3f',num:6,nom:'Bâtiment A - Couloir 1er étage - Réfection complète et peinture',categorie:'Peinture',etat:'tres_mauvais_etat',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Réfection des murs avant mise en peinture et voir pour pose de déco-choc. Remplacement des dalles de faux plafond.',photos:[],signature:null},
+      {id:'p3g',num:7,nom:'Bâtiment A - Couloir 2ème étage - Réfection complète et peinture',categorie:'Peinture',etat:'mauvais_etat',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement des dalles de faux plafond.',photos:[],signature:null},
+      {id:'p3h',num:8,nom:'Préau couvert - Remplacement éclairages par pavés LED',categorie:'Électricité',etat:'a_remplacer',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement des anciens éclairages restant et spots par pavés LED. Surface: 70m2',photos:[],signature:null},
+      {id:'p3i',num:9,nom:'Bâtiment Administration - Salle de Réunion - ECL LED',categorie:'Électricité',etat:'mauvais_etat',priorite:'basse',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Mise en place de deux pavés LED. Surface: 30m2',photos:[],signature:null}
+    ]
+  },
+  {
+    id:'g4', nom:'Collège F Léger', batiment:'4 Bâtiments',
+    localisation:'', technicien:'Aubert Y', statut:'en_cours',
+    date_prevue:'2026-03-28', date_realisee:'', cree_le:'30/03/2026',
+    points:[
+      {id:'p4a',num:1,nom:'Circulation RDC - Remplacement dalles plafond et peinture',categorie:'Peinture',etat:'non_verifie',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Suite dégât des eaux, remplacement des dalles de faux plafonds et remise en peinture de la partie de couloir concerné entre 2 portes CF',photos:[],signature:null},
+      {id:'p4b',num:2,nom:'Atelier ATTE - Création d\'un faux plafond',categorie:'Maçonnerie',etat:'non_verifie',priorite:'basse',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Création d\'un faux plafond dans la partie bureau',photos:[],signature:null},
+      {id:'p4c',num:3,nom:'Salle de musique - Réfection complète',categorie:'Maçonnerie',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'oui',dat:true,dat_date:'',commentaire:'Réfection complète de la salle suite dégâts des eaux et mise en place d\'une porte au niveau du placard compteur d\'eau.\nTous travaux sauf sols.\nPrésence d\'amiante dans les sols',photos:[],signature:null},
+      {id:'p4d',num:4,nom:'Circulation 1er et 2ème étages - Remplacement dalles plafond et peinture',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement des dalles de faux plafonds si besoin et remise en peinture des couloirs par tronçon.',photos:[],signature:null},
+      {id:'p4e',num:5,nom:'Atelier ATTE - Nettoyage et remise en peinture regards',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher et remise en peinture des regards en béton et plaque en acier d\'obturation',photos:[],signature:null},
+      {id:'p4f',num:6,nom:'Atelier ATTE - Nettoyage au karcher',categorie:'Nettoyage',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher de l\'allée le long de l\'atelier plus application produit d\'anti-mousse',photos:[],signature:null}
+    ]
+  },
+  {
+    id:'g5', nom:'Collège Gérard Philippe', batiment:'Bâtiment A B C',
+    localisation:'', technicien:'Y AUBERT', statut:'en_cours',
+    date_prevue:'2026-03-30', date_realisee:'', cree_le:'30/03/2026',
+    points:[
+      {id:'p5a',num:1,nom:'Accès plonge - Réfection faux plafond, ECL et peinture',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Réfection faux plafond et éclairages et remise en peinture. Surface: 20m2',photos:[],signature:null},
+      {id:'p5b',num:2,nom:'Gymnase - Réfection faux plafonds et éclairages vestiaires',categorie:'Électricité',etat:'non_verifie',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Réfection en faux plafonds et éclairages de l\'entrée des deux vestiaires et du bureau des professeurs. Surface: 60m2',photos:[],signature:null},
+      {id:'p5c',num:3,nom:'Terrasse côté bureau principal - Nettoyage et peinture',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher et mise en peinture. Surface: 40m2',photos:[],signature:null},
+      {id:'p5d',num:4,nom:'Parking intérieur - Nettoyage et peinture murs',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher et mise en peinture des murs du parking. Surface: 30m2',photos:[],signature:null},
+      {id:'p5e',num:5,nom:'Bâtiment B - Plan d\'intervention à refaire et refixer',categorie:'Autre',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Surface: 20m2',photos:[],signature:null},
+      {id:'p5f',num:6,nom:'Bureau CPE et Vie Scolaire - Film occultant',categorie:'Vitrerie / Façades',etat:'non_verifie',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Mettre en place un film opaque sur les deux premières vitres, en partant du bas, pour garantir la confidentialité. Surface: 40m2',photos:[],signature:null},
+      {id:'p5g',num:7,nom:'Bâtiment C - Nettoyage et peinture',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher et mise en peinture. Surface: 60m2',photos:[],signature:null},
+      {id:'p5h',num:8,nom:'Bâtiment Accueil - Réfection faux plafond, ECL et peinture',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Réfection faux plafond et éclairages et remise en peinture. Surface: 60m2',photos:[],signature:null},
+      {id:'p5i',num:9,nom:'Marches administration et accès PMR - Nettoyage et peinture',categorie:'Peinture',etat:'non_verifie',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher et mise en peinture. Surface: 40m2',photos:[],signature:null}
+    ]
+  },
+  {
+    id:'g6', nom:'Collège Voltaire', batiment:'Bâtiment',
+    localisation:'administration', technicien:'Aubert Yohann', statut:'terminee',
+    date_prevue:'2026-03-30', date_realisee:'2026-03-30', cree_le:'30/03/2026',
+    points:[
+      {id:'p6a',num:1,nom:'Vie Scolaire - Faux plafond, ECL et peinture (9 pavés)',categorie:'Électricité',etat:'a_remplacer',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement dalles et éclairages et remise en peinture.',photos:[],signature:null},
+      {id:'p6b',num:2,nom:'Bureau CPE - Faux plafond, ECL et peinture (2 pavés)',categorie:'Électricité',etat:'a_remplacer',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement dalles et éclairages et remise en peinture.',photos:[],signature:null},
+      {id:'p6c',num:3,nom:'Foyer des élèves - Mise en place de 3 verrières',categorie:'Vitrerie / Façades',etat:'conforme',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Mise en place des verrières à la demande du collège pour faciliter la surveillance du Foyer',photos:[],signature:null},
+      {id:'p6d',num:4,nom:'Bâtiment administration - Nettoyage marches',categorie:'Nettoyage',etat:'mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher des marches de l\'entrée de l\'administration (avant mise en peinture)',photos:[],signature:null},
+      {id:'p6e',num:5,nom:'Cuisine - Nettoyage et mise en peinture',categorie:'Peinture',etat:'mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher et mise en peinture. Surface: 60m2',photos:[],signature:null},
+      {id:'p6f',num:6,nom:'Bâtiment demi-pension - Nettoyage karcher',categorie:'Nettoyage',etat:'mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Entretien au karcher des murets et du sous-bassement des parterres végétaux',photos:[],signature:null},
+      {id:'p6g',num:7,nom:'Bâtiment administration - Faux plafond et ECL couloir',categorie:'Électricité',etat:'tres_mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement dalles et éclairages du couloir administration environ une dizaine',photos:[],signature:null},
+      {id:'p6h',num:8,nom:'Accueil - Nettoyage au karcher des marches',categorie:'Nettoyage',etat:'mauvais_etat',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher des marches de l\'entrée de l\'accueil (avant mise en peinture)',photos:[],signature:null},
+      {id:'p6i',num:9,nom:'Arrière bât. admin parking - Nettoyage karcher',categorie:'Nettoyage',etat:'mauvais_etat',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Nettoyage au karcher application produit d\'anti-mousse',photos:[],signature:null},
+      {id:'p6j',num:10,nom:'Salle B',categorie:'Peinture',etat:'mauvais_etat',priorite:'haute',pt_eau:true,amiante:'oui',dat:false,dat_date:'',commentaire:'',photos:[],signature:null},
+      {id:'p6k',num:11,nom:'Bureau CPE',categorie:'Électricité',etat:'conforme',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement ECL par 2 pavés LED',photos:[],signature:null},
+      {id:'p6l',num:12,nom:'Vie Scolaire',categorie:'Électricité',etat:'conforme',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement des eclairages par 6 pavés LED',photos:[],signature:null},
+      {id:'p6m',num:13,nom:'Réfection face arrière Bat Admin',categorie:'Peinture',etat:'non_conforme',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'',photos:[],signature:null},
+      {id:'p6n',num:14,nom:'Couloir administration',categorie:'Électricité',etat:'conforme',priorite:'moyenne',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'Remplacement pavés LED voir pour rajouter un circuit parallèle sous détection.',photos:[],signature:null},
+      {id:'p6o',num:15,nom:'Bâtiment administratif',categorie:'',etat:'conforme',priorite:'haute',pt_eau:false,amiante:'non',dat:false,dat_date:'',commentaire:'',photos:[],signature:null}
+    ]
+  }
+];
+
+let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+if (!data) { data = JSON.parse(JSON.stringify(INITIAL_DATA)); saveData(); }
+
+function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
+// Échappe le HTML pour tout texte pouvant provenir d'une saisie utilisateur ou d'un fichier importé
+// (Excel/Word/txt) avant insertion via innerHTML — évite l'injection de balises/attributs.
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ══════════════════════════════════════════════════
+// LIEN AVEC MAINTENANCE PLANNEUR
+// ══════════════════════════════════════════════════
+const PLANNEUR_TASKS_KEY = 'planneur_interventions';
+const PLANNEUR_TEAM_KEY = 'planneur_equipe';
+const NUM_SEQ_KEY = 'planneur_num_seq';
+function pad2(n){ return n<10?'0'+n:''+n; }
+function dstr(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+// Numéro d'intervention partagé avec Planneur / Planneur V2 (format AA-NNNNNN).
+function nextInterventionNumero(dateStr){
+  const year = dateStr ? Number(dateStr.slice(2,4)) : (new Date().getFullYear()%100);
+  let seq = Number(localStorage.getItem(NUM_SEQ_KEY) || '0') + 1;
+  if (seq > 999999) seq = 999999;
+  localStorage.setItem(NUM_SEQ_KEY, String(seq));
+  return `${String(year).padStart(2,'0')}-${String(seq).padStart(6,'0')}`;
+}
+
+function loadPlanneurTasks(){
+  try{ return JSON.parse(localStorage.getItem(PLANNEUR_TASKS_KEY) || '[]') || []; }catch(e){ return []; }
+}
+function savePlanneurTasks(list){ localStorage.setItem(PLANNEUR_TASKS_KEY, JSON.stringify(list)); }
+function findPlanneurMembreIdByName(nom){
+  if (!nom) return '';
+  try{
+    const team = JSON.parse(localStorage.getItem(PLANNEUR_TEAM_KEY) || '[]') || [];
+    const m = team.find(t=>t.nom.trim().toLowerCase()===nom.trim().toLowerCase());
+    return m ? m.id : '';
+  }catch(e){ return ''; }
+}
+
+// Crée (ou resynchronise si déjà créée) l'intervention Planneur liée à un point de contrôle.
+// L'intervention est ajoutée non planifiée (sans date) : elle apparaît dans les "Non planifiées"
+// du Planneur, prête à être glissée sur un jour.
+function genererIntervention(gid, pid, silent){
+  const g = data.find(x=>x.id===gid); if (!g) return;
+  const p = (g.points||[]).find(x=>x.id===pid); if (!p) return;
+  const tasks = loadPlanneurTasks();
+  const existing = p.planneurTacheId ? tasks.find(t=>t.id===p.planneurTacheId) : null;
+  if (existing){
+    existing.titre = p.nom;
+    existing.lieu = g.batiment || g.nom;
+    existing.sourceGammeId = gid;
+    existing.sourcePointId = pid;
+    savePlanneurTasks(tasks);
+    if (!silent) toast('🔄 Intervention déjà planifiée : mise à jour dans le Planneur');
+    return 'updated';
+  }
+  const creeLe = dstr(new Date());
+  const tache = {
+    id: 'mp_'+uid(),
+    creeLe,
+    numero: nextInterventionNumero(creeLe),
+    titre: p.nom,
+    lieu: g.batiment || g.nom,
+    description: p.commentaire || '',
+    membreId: findPlanneurMembreIdByName(g.technicien),
+    statut: 'planifiee',
+    date: '',
+    heure: '',
+    duree: 60,
+    sourceGammeId: gid,
+    sourcePointId: pid
+  };
+  tasks.push(tache);
+  savePlanneurTasks(tasks);
+  p.planneurTacheId = tache.id;
+  saveData();
+  if (!silent){
+    toast('📅 Intervention créée dans le Planneur (non planifiée)');
+    if (currentId===gid) viewGamme(gid);
+  }
+  return 'created';
+}
+
+function genererInterventionsGamme(gid){
+  const g = data.find(x=>x.id===gid); if (!g) return;
+  const pts = g.points||[];
+  if (!pts.length){ toast('⚠️ Aucun point de contrôle dans cette gamme'); return; }
+  let created=0, updated=0;
+  pts.forEach(p=>{
+    const r = genererIntervention(gid, p.id, true);
+    if (r==='created') created++; else if (r==='updated') updated++;
+  });
+  if (currentId===gid) viewGamme(gid);
+  toast(`📅 ${created} intervention(s) créée(s)${updated?`, ${updated} déjà à jour`:''} dans le Planneur`);
+}
+
+// ── STATE ──
+let currentId = null;
+let filterStatus = 'all';
+let searchVal = '';
+let photoTargetId = null; // gamme id
+let photoTargetPtId = null; // point id
+
+// ── DARK MODE ──
+function toggleDark() {
+  const d = document.body.classList.toggle('dark');
+  localStorage.setItem('mp_dark', d?'1':'0');
+  document.getElementById('darkBtn').textContent = d ? '☀️' : '🌙';
+  document.getElementById('themeColor').content = d ? '#0a1520' : '#1e3a5f';
+  updateThemeButtons();
+}
+function setTheme(mode){
+  const dark = mode==='dark';
+  if (dark !== document.body.classList.contains('dark')) toggleDark();
+}
+function updateThemeButtons(){
+  const dark = document.body.classList.contains('dark');
+  const lb=document.getElementById('themeLightBtn'), db=document.getElementById('themeDarkBtn');
+  if(lb){ lb.classList.toggle('tb-gold', !dark); lb.classList.toggle('tb-ghost', dark); }
+  if(db){ db.classList.toggle('tb-gold', dark); db.classList.toggle('tb-ghost', !dark); }
+}
+if (localStorage.getItem('mp_dark')==='1') {
+  document.body.classList.add('dark');
+  document.addEventListener('DOMContentLoaded',()=>{ const b=document.getElementById('darkBtn'); if(b)b.textContent='☀️'; });
+}
+
+// ── PARAMÈTRES / SAUVEGARDE JSON ──
+const BACKUP_KEYS = ['maintenancepro_data','planneur_equipe','planneur_interventions','planneur_conges','mp_dark'];
+function openSettings(){
+  updateThemeButtons();
+  document.getElementById('settingsModal').classList.add('open');
+}
+function closeSettings(){
+  document.getElementById('settingsModal').classList.remove('open');
+}
+function exportData(){
+  const backup = {};
+  BACKUP_KEYS.forEach(k=>{ const v = localStorage.getItem(k); if (v!==null) backup[k] = v; });
+  const payload = { app:'MaintenancePro', version:1, exportedAt: new Date().toISOString(), data: backup };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `maintenancepro-sauvegarde-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  toast('✅ Sauvegarde exportée');
+}
+function importDataFile(input){
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const payload = JSON.parse(e.target.result);
+      const backup = (payload && typeof payload==='object' && payload.data) ? payload.data : payload;
+      if (!backup || typeof backup !== 'object') throw new Error('format invalide');
+      if (!confirm('Cela va remplacer vos données actuelles (gammes, équipe, planning, congés) par celles du fichier. Continuer ?')) { input.value=''; return; }
+      Object.keys(backup).forEach(k => { if (BACKUP_KEYS.includes(k)) localStorage.setItem(k, backup[k]); });
+      closeSettings();
+      alert('Sauvegarde importée avec succès. La page va se recharger.');
+      location.reload();
+    } catch (err) {
+      alert('Fichier invalide : ' + err.message);
+    } finally {
+      input.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ── APP SWITCH (robuste : new tab, avec repli si bloqué, y compris en mode PWA standalone) ──
+function openApp(e, url){
+  e.preventDefault();
+  const w = window.open(url, '_blank');
+  if (!w) { window.location.href = url; }
+  return false;
+}
+
+// ── SIDEBAR MOBILE ──
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('sidebarOverlay').classList.toggle('open'); }
+function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('open'); }
+
+// ── TOAST ──
+function toast(msg) {
+  const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2800);
+}
+
+// ── CONFIRM MODAL ──
+let confirmCb=null;
+function confirm2(title,msg,cb,btnLabel='Supprimer',btnColor='var(--danger)') {
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmMsg').textContent=msg;
+  const btn=document.getElementById('confirmOkBtn');
+  btn.textContent=btnLabel; btn.style.background=btnColor;
+  btn.onclick=()=>{ closeConfirm(); cb(); };
+  document.getElementById('confirmModal').classList.add('open');
+}
+function closeConfirm(){ document.getElementById('confirmModal').classList.remove('open'); }
+
+// ── FILTER ──
+function setFilter(f, el) {
+  filterStatus=f;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderList();
+}
+
+document.getElementById('sSearch').addEventListener('input', e=>{ searchVal=e.target.value; renderList(); });
+
+// ── LABELS ──
+const STATUT_LABELS = {planifiee:'Planifiée',en_cours:'En cours',terminee:'Terminée'};
+const ETAT_LABELS = {bon_etat:'Bon état',mauvais_etat:'Mauvais état',tres_mauvais_etat:'Très mauvais état',a_remplacer:'À remplacer',conforme:'Conforme',non_conforme:'Non conforme',non_verifie:'Non vérifié'};
+const PRIOR_LABELS = {haute:'Haute',moyenne:'Moyenne',basse:'Basse'};
+
+// ── RENDER LIST ──
+function renderList() {
+  const list=document.getElementById('gammeList');
+  const filtered=data.filter(g=>{
+    if(filterStatus!=='all'&&g.statut!==filterStatus)return false;
+    if(searchVal){const s=searchVal.toLowerCase();return g.nom.toLowerCase().includes(s)||g.batiment.toLowerCase().includes(s)||(g.technicien||'').toLowerCase().includes(s);}
+    return true;
+  });
+  if(!filtered.length){
+    list.innerHTML='<div style="text-align:center;padding:30px 16px;color:rgba(255,255,255,0.3);font-size:13px;">Aucun résultat</div>';
+    return;
+  }
+  list.innerHTML=filtered.map(g=>{
+    const amianteCount=(g.points||[]).filter(p=>p.amiante==='oui'||p.amiante==='a_controler').length;
+    const amianteOui=(g.points||[]).filter(p=>p.amiante==='oui').length;
+    const amianteCtrl=(g.points||[]).filter(p=>p.amiante==='a_controler').length;
+    const hauteCount=(g.points||[]).filter(p=>p.priorite==='haute').length;
+    return `<div class="gamme-item${currentId===g.id?' active':''}" onclick="viewGamme('${g.id}');closeSidebar();">
+      <div class="gamme-item-name">${esc(g.nom)}</div>
+      <div class="gamme-item-bat">${esc(g.batiment)}</div>
+      <div class="gamme-item-footer">
+        <span class="badge badge-${g.statut}">${STATUT_LABELS[g.statut]||g.statut}</span>
+        ${amianteOui?`<span class="badge badge-amiante">⚠️ Amiante</span>`:''}
+        ${amianteCtrl?`<span class="badge" style="background:rgba(232,160,32,0.2);color:#c8880a;font-size:10px;">🔍 À contrôler</span>`:''}
+        ${hauteCount?`<span class="badge badge-haute">🔴 ${hauteCount} haute</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── DASHBOARD ──
+function showDashboard() {
+  currentId=null; renderList();
+  document.getElementById('topbarTitle').textContent='Tableau de bord';
+  document.getElementById('topbarActions').innerHTML=`<button class="tb-btn tb-gold" onclick="showForm(null)" style="margin-left:8px;">＋ Nouvelle gamme</button>`;
+
+  const total=data.length;
+  const en_cours=data.filter(g=>g.statut==='en_cours').length;
+  const terminee=data.filter(g=>g.statut==='terminee').length;
+  const amiante=data.reduce((acc,g)=>acc+(g.points||[]).filter(p=>p.amiante==='oui'||p.amiante==='a_controler').length,0);
+  const haute=data.reduce((acc,g)=>acc+(g.points||[]).filter(p=>p.priorite==='haute').length,0);
+
+  document.getElementById('mainContent').innerHTML=`<div class="dashboard fade-in">
+    <div class="dash-header">
+      <div class="dash-title">Bonjour 👋</div>
+      <div class="dash-sub">${new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card navy"><div class="stat-num">${total}</div><div class="stat-label">Gammes totales</div></div>
+      <div class="stat-card gold"><div class="stat-num">${en_cours}</div><div class="stat-label">En cours</div></div>
+      <div class="stat-card success"><div class="stat-num">${terminee}</div><div class="stat-label">Terminées</div></div>
+      <div class="stat-card danger"><div class="stat-num">${amiante}</div><div class="stat-label">Points amiante</div></div>
+    </div>
+    ${haute?`<div style="background:rgba(214,48,49,0.08);border:1px solid rgba(214,48,49,0.2);border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--danger);">🔴 ${haute} point(s) de contrôle en priorité haute</div>`:''}
+    <div class="dash-section-title">Toutes les gammes</div>
+    <div class="recent-list">
+      ${data.map(g=>`<div class="recent-item" onclick="viewGamme('${g.id}')">
+        <div class="recent-dot dot-${g.statut}"></div>
+        <div class="recent-info">
+          <div class="recent-name">${esc(g.nom)}</div>
+          <div class="recent-bat">${esc(g.batiment)}${g.technicien?' · '+esc(g.technicien):''}</div>
+        </div>
+        <div class="recent-right">
+          <span class="badge badge-${g.statut}">${STATUT_LABELS[g.statut]}</span>
+          <span style="font-size:11px;color:var(--text2);">${(g.points||[]).length} point(s)</span>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ── VIEW GAMME ──
+function viewGamme(id) {
+  currentId=id; renderList();
+  const g=data.find(x=>x.id===id); if(!g)return;
+  closeSidebar();
+
+  document.getElementById('topbarTitle').innerHTML=`${esc(g.nom)} <span class="topbar-sub">${esc(g.batiment)}</span>`;
+  document.getElementById('topbarActions').innerHTML=`
+    <button class="tb-btn tb-ghost" onclick="showForm('${g.id}')" style="margin-left:8px;">✏️ Modifier</button>
+    <button class="tb-btn" onclick="genererInterventionsGamme('${g.id}')" style="margin-left:6px;background:#6c5ce7;color:#fff;">📅 → Planneur</button>
+    <button class="tb-btn tb-gold" onclick="exportPDF('${g.id}')" style="margin-left:6px;">📄 PDF</button>
+    <button class="tb-btn" onclick="exportExcel('${g.id}')" style="margin-left:6px;background:#1d6f42;color:#fff;">📊 Excel</button>
+    <button class="tb-btn" onclick="exportWord('${g.id}')" style="margin-left:6px;background:#2b579a;color:#fff;">📝 Word</button>
+    <button class="tb-btn tb-danger" onclick="askDelete('${g.id}')" style="margin-left:6px;">🗑️</button>
+  `;
+
+  const pts=g.points||[];
+  const amiantePts=pts.filter(p=>p.amiante==='oui');
+  const amianteCtrlPts=pts.filter(p=>p.amiante==='a_controler');
+  const hautePts=pts.filter(p=>p.priorite==='haute');
+
+  document.getElementById('mainContent').innerHTML=`<div class="detail-wrap fade-in">
+    <div class="detail-hero">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <div class="detail-name">${esc(g.nom)}</div>
+          <span class="badge badge-${g.statut}" style="font-size:12px;">${STATUT_LABELS[g.statut]}</span>
+        </div>
+        ${amiantePts.length?`<div class="amiante-alert" style="margin:0;">⚠️ ${amiantePts.length} point(s) avec présence d'amiante</div>`:''}
+        ${amianteCtrlPts.length?`<div class="amiante-alert" style="margin:0;background:rgba(232,160,32,0.08);border-color:rgba(232,160,32,0.3);color:#c8880a;">🔍 ${amianteCtrlPts.length} point(s) à contrôler pour l'amiante</div>`:''}
+      </div>
+      <div class="detail-chips">
+        <div class="dchip"><div class="dchip-label">Bâtiment</div><div class="dchip-val" style="font-size:13px;">${g.batiment?esc(g.batiment):'—'}</div></div>
+        <div class="dchip"><div class="dchip-label">Technicien</div><div class="dchip-val">${g.technicien?esc(g.technicien):'—'}</div></div>
+        <div class="dchip"><div class="dchip-label">Date prévue</div><div class="dchip-val">${g.date_prevue?fmtDate(g.date_prevue):'—'}</div></div>
+        <div class="dchip"><div class="dchip-label">Date réalisée</div><div class="dchip-val">${g.date_realisee?fmtDate(g.date_realisee):'—'}</div></div>
+      </div>
+    </div>
+
+    <div class="pts-section">
+      <div class="pts-header">
+        <div class="pts-title">Points de contrôle</div>
+        <span class="pts-count">${pts.length}</span>
+        <button class="tb-btn tb-primary" style="font-size:12px;padding:5px 12px;" onclick="addPointUI('${g.id}')">＋ Ajouter</button>
+      </div>
+      ${pts.map(p=>renderPtCard(p,g.id)).join('')}
+    </div>
+    ${(g.annexes&&g.annexes.length)?`<div class="pts-section">
+      <div class="pts-header">
+        <div class="pts-title">📎 Annexes &amp; plans</div>
+        <span class="pts-count">${g.annexes.length}</span>
+      </div>
+      <div style="padding:16px 20px;">
+        <div class="photos-grid">
+          ${g.annexes.map((a,i)=>`<div class="photo-thumb" title="${esc(a.label||'')}">
+            <img src="${a.data}" onclick="openPhotoViewer('${a.data}')">
+            <button class="photo-del" onclick="event.stopPropagation();deleteAnnexe('${g.id}',${i})">✕</button>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>`:''}
+    <div style="height:20px;"></div>
+  </div>`;
+  initAllSigs(g);
+}
+function deleteAnnexe(gid, idx){
+  const g = data.find(x=>x.id===gid); if (!g || !g.annexes) return;
+  g.annexes.splice(idx,1); saveData(); viewGamme(gid);
+}
+
+function renderPtCard(p, gid) {
+  const amianteTxt=p.amiante==='oui'?'<span class="badge badge-amiante">⚠️ Amiante</span>':p.amiante==='a_controler'?'<span class="badge" style="background:rgba(232,160,32,0.2);color:#c8880a;">🔍 À contrôler</span>':'';
+  const datTxt=p.dat?`<span class="badge" style="background:rgba(9,132,227,0.15);color:#0984e3;">DAT${p.dat_date?' '+fmtDate(p.dat_date):''}</span>`:'';
+  const ptEauTxt=p.pt_eau?'<span class="badge" style="background:rgba(9,132,227,0.1);color:#0984e3;">💧 Pt eau</span>':'';
+  return `<div class="pt-card" id="ptc_${p.id}">
+    <div class="pt-top">
+      <div class="pt-num">${p.num}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="pt-name">${esc(p.nom)}</div>
+        <div class="pt-badges">
+          ${p.categorie?`<span class="badge" style="background:var(--surface2);color:var(--text2);">${esc(p.categorie)}</span>`:''}
+          <span class="badge badge-${p.priorite}">${PRIOR_LABELS[p.priorite]||p.priorite}</span>
+          <span class="etat-${p.etat}" style="font-size:12px;font-weight:600;">${ETAT_LABELS[p.etat]||p.etat}</span>
+          ${amianteTxt}${datTxt}${ptEauTxt}
+        </div>
+      </div>
+      <button class="tb-icon" style="font-size:13px;${p.planneurTacheId?'color:#00b894;':''}" onclick="genererIntervention('${gid}','${p.id}')" title="${p.planneurTacheId?'Déjà planifié dans le Planneur — cliquer pour resynchroniser':'Créer une intervention dans le Planneur'}">${p.planneurTacheId?'✅':'📅'}</button>
+      <button class="tb-icon" style="font-size:13px;" onclick="editPoint('${gid}','${p.id}')" title="Modifier">✏️</button>
+    </div>
+    ${p.commentaire?`<div class="pt-comment">${esc(p.commentaire).replace(/\n/g,'<br>')}</div>`:''}
+    ${(p.photos&&p.photos.length)||true?`
+    <div style="margin-top:10px;">
+      <div class="photos-grid" id="photos_${p.id}">
+        ${(p.photos||[]).map((ph,i)=>`
+          <div class="photo-thumb">
+            <img src="${ph}" onclick="openPhotoViewer('${ph}')">
+            <button class="photo-del" onclick="event.stopPropagation();deletePhoto('${gid}','${p.id}',${i})">✕</button>
+          </div>`).join('')}
+        <div class="add-photo" onclick="startPhoto('${gid}','${p.id}')"><span>📷</span><span style="font-size:10px;">Photo</span></div>
+      </div>
+    </div>`:''}
+    <div style="margin-top:10px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin-bottom:6px;">✍️ Signature</div>
+      <div class="sig-canvas-wrap">
+        <canvas id="sig_${p.id}" height="100" style="height:100px;"></canvas>
+        <div class="sig-bar">
+          <button class="sig-btn sig-clear-btn" onclick="clearSig('${p.id}')">Effacer</button>
+          <button class="sig-btn sig-save-btn" onclick="saveSig('${gid}','${p.id}')">Enregistrer</button>
+        </div>
+      </div>
+      ${p.signature?`<img src="${p.signature}" style="width:180px;border-radius:8px;margin-top:6px;border:1px solid var(--border);" alt="Signature">`:''}
+    </div>
+  </div>`;
+}
+
+// ── SIGNATURE ──
+const sigStates = {};
+function initAllSigs(g) {
+  setTimeout(()=>{
+    (g.points||[]).forEach(p=>initSig(p.id));
+  },100);
+}
+function initSig(pid) {
+  const canvas=document.getElementById('sig_'+pid); if(!canvas)return;
+  const dpr=window.devicePixelRatio||1;
+  canvas.width=canvas.offsetWidth*dpr;
+  canvas.height=100*dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  ctx.strokeStyle=document.body.classList.contains('dark')?'#e8eef5':'#1a2332';
+  ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round';
+  sigStates[pid]={ctx,drawing:false};
+  const getPos=e=>{const r=canvas.getBoundingClientRect();const s=e.touches?e.touches[0]:e;return{x:s.clientX-r.left,y:s.clientY-r.top};};
+  canvas.addEventListener('pointerdown',e=>{sigStates[pid].drawing=true;const p=getPos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault();});
+  canvas.addEventListener('pointermove',e=>{if(!sigStates[pid].drawing)return;const p=getPos(e);ctx.lineTo(p.x,p.y);ctx.stroke();e.preventDefault();});
+  canvas.addEventListener('pointerup',()=>sigStates[pid].drawing=false);
+  canvas.addEventListener('pointerleave',()=>sigStates[pid].drawing=false);
+}
+function clearSig(pid){const s=sigStates[pid];if(!s)return;const c=document.getElementById('sig_'+pid);s.ctx.clearRect(0,0,c.offsetWidth,c.offsetHeight);}
+function saveSig(gid,pid){
+  const canvas=document.getElementById('sig_'+pid);if(!canvas)return;
+  const g=data.find(x=>x.id===gid);const p=g?.points.find(x=>x.id===pid);if(!p)return;
+  p.signature=canvas.toDataURL('image/png');saveData();toast('✍️ Signature enregistrée !');
+  viewGamme(gid);
+}
+
+// ── PHOTOS ──
+function startPhoto(gid,pid){photoTargetId=gid;photoTargetPtId=pid;document.getElementById('photoInput').click();}
+document.getElementById('photoInput').addEventListener('change',e=>{
+  const file=e.target.files[0];if(!file||!photoTargetId)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const g=data.find(x=>x.id===photoTargetId);
+    const p=g?.points.find(x=>x.id===photoTargetPtId);
+    if(!p)return;
+    if(!p.photos)p.photos=[];
+    p.photos.push(ev.target.result);
+    saveData();viewGamme(photoTargetId);toast('📷 Photo ajoutée !');
+  };
+  reader.readAsDataURL(file);e.target.value='';
+});
+function deletePhoto(gid,pid,idx){
+  const g=data.find(x=>x.id===gid);const p=g?.points.find(x=>x.id===pid);if(!p)return;
+  p.photos.splice(idx,1);saveData();viewGamme(gid);
+}
+function openPhotoViewer(src){document.getElementById('photoViewerImg').src=src;document.getElementById('photoViewer').classList.add('open');}
+function closePhotoViewer(){document.getElementById('photoViewer').classList.remove('open');}
+
+// ── FORM ──
+const CATEGORIES=['Peinture','Électricité','Maçonnerie','Menuiserie','Nettoyage','Plomberie','Vitrerie / Façades','CVC','Serrurerie','Extérieur','Autre'];
+const ETATS=['bon_etat','mauvais_etat','tres_mauvais_etat','a_remplacer','conforme','non_conforme','non_verifie'];
+const PRIORITES=['haute','moyenne','basse'];
+const STATUTS=['planifiee','en_cours','terminee'];
+
+function showForm(id) {
+  currentId=id||null; renderList();
+  const g=id?data.find(x=>x.id===id):null;
+  document.getElementById('topbarTitle').textContent=g?'Modifier la gamme':'Nouvelle gamme';
+  document.getElementById('topbarActions').innerHTML=`<button class="tb-btn tb-primary" onclick="saveForm()" style="margin-left:8px;">💾 Enregistrer</button>`;
+
+  document.getElementById('mainContent').innerHTML=`<div class="form-wrap fade-in">
+    <div class="form-card">
+      <div class="form-section-title">Informations générales</div>
+      <div class="fields-grid col2">
+        <div class="field-group full"><label class="field-label">Nom de la gamme *</label>
+          <input class="field-input" id="f_nom" type="text" placeholder="Ex : Collège Jean Moulin" value="${esc(g?.nom||'')}"></div>
+        <div class="field-group full"><label class="field-label">Bâtiment *</label>
+          <input class="field-input" id="f_bat" type="text" placeholder="Ex : Bâtiment A, B, C" value="${esc(g?.batiment||'')}"></div>
+        <div class="field-group"><label class="field-label">Localisation</label>
+          <input class="field-input" id="f_loc" type="text" placeholder="Ex : Administration" value="${esc(g?.localisation||'')}"></div>
+        <div class="field-group"><label class="field-label">Technicien</label>
+          <input class="field-input" id="f_tech" type="text" placeholder="Ex : Aubert Y" value="${esc(g?.technicien||'')}"></div>
+        <div class="field-group"><label class="field-label">Statut</label>
+          <select class="field-select" id="f_statut">
+            ${STATUTS.map(s=>`<option value="${s}"${(g?.statut||'planifiee')===s?' selected':''}>${STATUT_LABELS[s]}</option>`).join('')}
+          </select></div>
+        <div class="field-group"><label class="field-label">Date prévue</label>
+          <input class="field-input" id="f_dprev" type="date" value="${g?.date_prevue||''}"></div>
+        <div class="field-group"><label class="field-label">Date réalisée</label>
+          <input class="field-input" id="f_dreal" type="date" value="${g?.date_realisee||''}"></div>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-title">Points de contrôle</div>
+      <div id="ptsFormList">
+        ${(g?.points||[]).map((p,i)=>ptFormBlock(p,i)).join('')}
+      </div>
+      <button class="add-pt-btn" onclick="addPtFormBlock()">＋ Ajouter un point de contrôle</button>
+    </div>
+    <div style="display:flex;gap:10px;padding-bottom:40px;">
+      <button class="tb-btn tb-primary" onclick="saveForm()" style="flex:1;justify-content:center;">💾 Enregistrer</button>
+      <button class="tb-btn tb-ghost" onclick="${id?`viewGamme('${id}')`:'showDashboard()'}" style="flex:1;justify-content:center;">Annuler</button>
+    </div>
+  </div>`;
+}
+
+function ptFormBlock(p, idx) {
+  return `<div class="pt-form-block" id="ptfb_${idx}">
+    <div class="pt-form-num">${idx+1}</div>
+    <div class="pt-form-inner">
+      <div class="fields-grid" style="margin-bottom:8px;">
+        <div class="field-group full"><label class="field-label">Nom du point *</label>
+          <input class="field-input ptf-nom" style="padding:8px 12px;" type="text" placeholder="Ex : Couloir RDC - Peinture" value="${esc(p?.nom||'')}"></div>
+      </div>
+      <div class="fields-grid col3" style="margin-bottom:8px;">
+        <div class="field-group"><label class="field-label">Catégorie</label>
+          <select class="field-select ptf-cat" style="padding:8px 12px;">
+            ${CATEGORIES.map(c=>`<option${(p?.categorie||'')==c?' selected':''}>${c}</option>`).join('')}
+          </select></div>
+        <div class="field-group"><label class="field-label">État</label>
+          <select class="field-select ptf-etat" style="padding:8px 12px;">
+            ${ETATS.map(e=>`<option value="${e}"${(p?.etat||'non_verifie')===e?' selected':''}>${ETAT_LABELS[e]}</option>`).join('')}
+          </select></div>
+        <div class="field-group"><label class="field-label">Priorité</label>
+          <select class="field-select ptf-prior" style="padding:8px 12px;">
+            ${PRIORITES.map(pr=>`<option value="${pr}"${(p?.priorite||'moyenne')===pr?' selected':''}>${PRIOR_LABELS[pr]}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
+        <div class="field-group" style="flex:1;min-width:160px;">
+          <label class="field-label">⚠️ Amiante</label>
+          <select class="field-select ptf-amiante" style="padding:8px 12px;">
+            <option value="non"${(p?.amiante_val||p?.amiante===false||p?.amiante==='non')?(!p?.amiante||p?.amiante==='non'?' selected':''):(p?.amiante===true||p?.amiante==='oui'?'':' selected')}>Non</option>
+            <option value="oui"${(p?.amiante===true||p?.amiante==='oui')?' selected':''}>Oui</option>
+            <option value="a_controler"${p?.amiante==='a_controler'?' selected':''}>À contrôler</option>
+          </select>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-top:18px;">
+          <input type="checkbox" class="ptf-dat"${p?.dat?' checked':''}> 📋 DAT réalisé
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;margin-top:18px;">
+          <input type="checkbox" class="ptf-pteau"${p?.pt_eau?' checked':''}> 💧 Point d'eau
+        </label>
+      </div>
+      <div class="field-group"><label class="field-label">Date DAT</label>
+        <input class="field-input ptf-datdate" type="date" style="padding:8px 12px;" value="${p?.dat_date||''}"></div>
+      <div class="field-group" style="margin-top:8px;"><label class="field-label">Commentaire</label>
+        <textarea class="field-textarea ptf-comment" style="min-height:60px;" placeholder="Observations, surfaces, consignes...">${esc(p?.commentaire||'')}</textarea></div>
+    </div>
+    <button class="pt-del-btn" onclick="removePtFormBlock(${idx})">×</button>
+  </div>`;
+}
+
+function addPtFormBlock(){
+  const list=document.getElementById('ptsFormList');
+  const n=list.querySelectorAll('.pt-form-block').length;
+  list.insertAdjacentHTML('beforeend',ptFormBlock(null,n));
+  renumberPtBlocks();
+}
+
+function removePtFormBlock(i){
+  document.getElementById('ptfb_'+i)?.remove();
+  renumberPtBlocks();
+}
+
+function renumberPtBlocks(){
+  document.querySelectorAll('#ptsFormList .pt-form-block').forEach((b,i)=>{
+    b.id='ptfb_'+i;
+    b.querySelector('.pt-form-num').textContent=i+1;
+    b.querySelector('.pt-del-btn').setAttribute('onclick',`removePtFormBlock(${i})`);
+  });
+}
+
+function addPointUI(gid){
+  const g=data.find(x=>x.id===gid);if(!g)return;
+  showForm(gid);
+  setTimeout(()=>{ addPtFormBlock(); document.getElementById('ptsFormList')?.lastElementChild?.scrollIntoView({behavior:'smooth'}); },100);
+}
+function editPoint(gid,pid){ showForm(gid); }
+
+function saveForm(){
+  const nom=document.getElementById('f_nom').value.trim();
+  const bat=document.getElementById('f_bat').value.trim();
+  if(!nom||!bat){toast('⚠️ Nom et bâtiment requis');return;}
+
+  const pts=Array.from(document.querySelectorAll('#ptsFormList .pt-form-block')).map((b,i)=>({
+    id:uid(),num:i+1,
+    nom:b.querySelector('.ptf-nom').value.trim(),
+    categorie:b.querySelector('.ptf-cat').value,
+    etat:b.querySelector('.ptf-etat').value,
+    priorite:b.querySelector('.ptf-prior').value,
+    amiante:b.querySelector('.ptf-amiante').value,
+    dat:b.querySelector('.ptf-dat').checked,
+    dat_date:b.querySelector('.ptf-datdate').value,
+    pt_eau:b.querySelector('.ptf-pteau').checked,
+    commentaire:b.querySelector('.ptf-comment').value.trim(),
+    photos:[],signature:null
+  }));
+
+  const existing=currentId?data.find(g=>g.id===currentId):null;
+  // preserve photos/sigs if editing
+  if(existing){pts.forEach(p=>{const old=existing.points.find(op=>op.nom===p.nom);if(old){p.photos=old.photos||[];p.signature=old.signature||null;p.id=old.id;p.planneurTacheId=old.planneurTacheId;}})}
+
+  const obj={
+    id:existing?.id||uid(),nom,batiment:bat,
+    localisation:document.getElementById('f_loc').value.trim(),
+    technicien:document.getElementById('f_tech').value.trim(),
+    statut:document.getElementById('f_statut').value,
+    date_prevue:document.getElementById('f_dprev').value,
+    date_realisee:document.getElementById('f_dreal').value,
+    cree_le:existing?.cree_le||new Date().toLocaleDateString('fr-FR'),
+    points:pts
+  };
+
+  if(existing){data[data.findIndex(g=>g.id===existing.id)]=obj;}
+  else{data.unshift(obj);}
+  saveData();renderList();currentId=obj.id;
+  viewGamme(obj.id);
+  toast(existing?'✅ Gamme mise à jour !':'✅ Gamme créée !');
+}
+
+// ── DELETE ──
+function askDelete(id){
+  const g=data.find(x=>x.id===id);
+  confirm2('Supprimer la gamme',`Supprimer "${g?.nom}" et tous ses points de contrôle ? Cette action est irréversible.`,()=>deleteGamme(id));
+}
+function deleteGamme(id){
+  data=data.filter(g=>g.id!==id);saveData();renderList();showDashboard();toast('🗑️ Gamme supprimée');
+}
+
+// ── IMPORT ──
+function showImport(){
+  document.getElementById('topbarTitle').textContent='Importer des données';
+  document.getElementById('topbarActions').innerHTML='';
+  document.getElementById('mainContent').innerHTML=`<div class="form-wrap fade-in">
+    <div class="form-card">
+      <div class="form-section-title">Importer un fichier export</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;">Importez un fichier d'export texte (.txt) dans le format standard. Les données seront ajoutées à vos gammes existantes.</p>
+      <div class="import-zone" id="importZone" onclick="document.getElementById('importFile').click()">
+        <div class="iz-icon">📁</div>
+        <p><strong>Cliquez pour choisir un fichier</strong><br>Format .txt — export_donnees_*.txt</p>
+      </div>
+      <input type="file" id="importFile" accept=".txt" style="display:none" onchange="handleImport(event)">
+    </div>
+    <div class="form-card">
+      <div class="form-section-title">Importer un fichier Excel</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;">Importez un classeur Excel (.xlsx) — idéalement une feuille "Points de contrôle" avec des colonnes N°, Nom du point, Catégorie, État, Priorité, Amiante, DAT, Pt eau, Commentaire (comme dans l'export Excel de MaintenancePro). Une nouvelle gamme est créée.</p>
+      <div class="import-zone" onclick="document.getElementById('importExcelFile').click()">
+        <div class="iz-icon">📊</div>
+        <p><strong>Cliquez pour choisir un fichier</strong><br>Format .xlsx</p>
+      </div>
+      <input type="file" id="importExcelFile" accept=".xlsx,.xls" style="display:none" onchange="handleImportExcel(event)">
+    </div>
+    <div class="form-card">
+      <div class="form-section-title">Importer un fichier Word</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;">Importez une gamme de maintenance rédigée sous Word (.docx). Si le document contient un tableau, chaque ligne devient un point de contrôle (les observations en commentaire) ; sinon chaque paragraphe devient un point. Les photos intégrées au document sont importées automatiquement : rattachées à la ligne/pièce où elles apparaissent, ou à la légende correspondante ("Point 3", "N°3"...) si elles sont regroupées dans une section Annexes.</p>
+      <div class="import-zone" onclick="document.getElementById('importWordFile').click()">
+        <div class="iz-icon">📝</div>
+        <p><strong>Cliquez pour choisir un fichier</strong><br>Format .docx</p>
+      </div>
+      <input type="file" id="importWordFile" accept=".docx" style="display:none" onchange="handleImportWord(event)">
+    </div>
+    <div class="form-card">
+      <div class="form-section-title">Export des données</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px;">Exportez toutes vos gammes au format JSON pour sauvegarde ou transfert.</p>
+      <button class="tb-btn tb-primary" onclick="exportJSON()">💾 Exporter en JSON</button>
+    </div>
+  </div>`;
+}
+
+function handleImport(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const txt=ev.target.result;
+      const parsed=parseTxt(txt);
+      if(!parsed.length){toast('⚠️ Aucune gamme trouvée dans le fichier');return;}
+      parsed.forEach(g=>{if(!data.find(x=>x.nom===g.nom))data.push(g);});
+      saveData();renderList();showDashboard();
+      toast(`✅ ${parsed.length} gamme(s) importée(s) !`);
+    }catch(err){toast('❌ Erreur lors de l\'import');}
+  };
+  reader.readAsText(file,'utf-8');
+  e.target.value='';
+}
+
+// ── IMPORT EXCEL ──
+function handleImportExcel(e){
+  const file=e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'array'});
+      const gamme = parseExcelWorkbook(wb, file.name);
+      if (!gamme || !gamme.points.length){ toast('⚠️ Aucun point de contrôle trouvé dans ce fichier'); return; }
+      data.unshift(gamme);
+      saveData(); renderList(); viewGamme(gamme.id);
+      toast(`✅ Gamme importée depuis Excel (${gamme.points.length} point(s)) !`);
+    }catch(err){ console.error(err); toast('❌ Erreur lors de la lecture du fichier Excel'); }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value='';
+}
+
+function parseExcelWorkbook(wb, filename){
+  const infoSheet = wb.Sheets['Informations'];
+  const ptsSheetName = wb.SheetNames.find(n=>/point/i.test(n)) || wb.SheetNames[wb.SheetNames.length-1];
+  const ptsSheet = wb.Sheets[ptsSheetName];
+  if (!ptsSheet) return null;
+  const rows = XLSX.utils.sheet_to_json(ptsSheet, {header:1, defval:''});
+  if (!rows.length) return null;
+
+  let nom = filename.replace(/\.[^.]+$/,'');
+  let batiment='', localisation='', technicien='';
+  if (infoSheet){
+    XLSX.utils.sheet_to_json(infoSheet, {header:1, defval:''}).forEach(r=>{
+      const label = String(r[0]||'').toLowerCase();
+      if (label.startsWith('gamme')) nom = String(r[0]).replace(/gamme de maintenance\s*—\s*/i,'').trim() || nom;
+      else if (label==='bâtiment') batiment = String(r[1]||'');
+      else if (label==='localisation') localisation = String(r[1]||'');
+      else if (label==='technicien') technicien = String(r[1]||'');
+    });
+  }
+
+  const header = (rows[0]||[]).map(h=>String(h||'').toLowerCase().trim());
+  const idx = names => { for (const n of names){ const i=header.findIndex(h=>h.includes(n)); if (i>=0) return i; } return -1; };
+  const iNum=idx(['n°','num']), iNom=idx(['nom du point','nom','point']), iCat=idx(['catégorie','categorie']),
+        iEtat=idx(['état','etat']), iPrior=idx(['priorité','priorite']), iAmiante=idx(['amiante']),
+        iDat=idx(['dat']), iPtEau=idx(['pt eau','point d\'eau','pteau']), iDatDate=idx(['date dat']),
+        iComment=idx(['commentaire','observation']);
+  const headerDetected = iNom>=0;
+
+  const ETAT_REV = {'bon état':'bon_etat','mauvais état':'mauvais_etat','très mauvais état':'tres_mauvais_etat','à remplacer':'a_remplacer','conforme':'conforme','non conforme':'non_conforme','non vérifié':'non_verifie'};
+  const dataRows = headerDetected ? rows.slice(1) : rows;
+  const points = dataRows.filter(r=>r.some(c=>String(c||'').trim())).map((r,i)=>{
+    const nomPt = iNom>=0 ? String(r[iNom]||'').trim() : String(r[1]!==undefined?r[1]:r[0]||'').trim();
+    if (!nomPt) return null;
+    const etatRaw = iEtat>=0 ? String(r[iEtat]||'').toLowerCase().trim() : '';
+    const priorRaw = iPrior>=0 ? String(r[iPrior]||'').toLowerCase().trim() : '';
+    const amianteRaw = iAmiante>=0 ? String(r[iAmiante]||'').toLowerCase() : '';
+    return {
+      id: uid(), num: iNum>=0 && r[iNum]!=='' ? (Number(r[iNum])||i+1) : i+1,
+      nom: nomPt,
+      categorie: iCat>=0 ? String(r[iCat]||'').trim() : '',
+      etat: ETAT_REV[etatRaw] || 'non_verifie',
+      priorite: ['haute','moyenne','basse'].includes(priorRaw) ? priorRaw : 'moyenne',
+      pt_eau: iPtEau>=0 && /oui/.test(String(r[iPtEau]||'').toLowerCase()),
+      amiante: amianteRaw.includes('contrôler')||amianteRaw.includes('controler') ? 'a_controler' : amianteRaw.includes('oui') ? 'oui' : 'non',
+      dat: iDat>=0 && /oui/.test(String(r[iDat]||'').toLowerCase()),
+      dat_date: iDatDate>=0 ? String(r[iDatDate]||'') : '',
+      commentaire: iComment>=0 ? String(r[iComment]||'').trim() : '',
+      photos:[], signature:null
+    };
+  }).filter(Boolean);
+
+  return {
+    id: uid(), nom, batiment: batiment||nom, localisation, technicien, statut:'planifiee',
+    date_prevue:'', date_realisee:'', cree_le: new Date().toLocaleDateString('fr-FR'),
+    points
+  };
+}
+
+// ── IMPORT WORD ──
+async function handleImportWord(e){
+  const file = e.target.files[0]; if (!file) return;
+  try{
+    const buf = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+    const docXmlFile = zip.file('word/document.xml');
+    if (!docXmlFile) throw new Error('document.xml introuvable (fichier .docx invalide)');
+    const xml = await docXmlFile.async('string');
+    const gamme = await parseWordDocument(zip, xml, file.name);
+    if (!gamme || !gamme.points.length){ toast('⚠️ Aucun contenu exploitable trouvé dans ce document'); e.target.value=''; return; }
+    data.unshift(gamme);
+    saveData(); renderList(); viewGamme(gamme.id);
+    const photoCount = gamme.points.reduce((n,p)=>n+(p.photos?p.photos.length:0),0);
+    const annexeCount = (gamme.annexes||[]).length;
+    toast(`✅ Gamme importée depuis Word (${gamme.points.length} point(s)${photoCount?`, ${photoCount} photo(s)`:''}${annexeCount?`, ${annexeCount} annexe(s)/plan(s)`:''}) !`);
+  }catch(err){ console.error(err); toast('❌ Erreur lors de la lecture du fichier Word'); }
+  e.target.value='';
+}
+
+function decodeXmlEntities(s){
+  return s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'");
+}
+
+function extractWordParagraphs(xml){
+  const paras = [];
+  const pRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
+  let m;
+  while ((m = pRegex.exec(xml))){
+    let txt = m[0].replace(/<w:tab\/>/g,' ').replace(/<w:br\/>/g,'\n').replace(/<[^>]+>/g,'');
+    txt = decodeXmlEntities(txt).trim();
+    if (txt) paras.push(txt);
+  }
+  return paras;
+}
+
+function extractEmbedIds(xmlFragment){
+  const ids = [];
+  const re = /r:embed="(rId\d+)"/g;
+  let m;
+  while ((m = re.exec(xmlFragment))) ids.push(m[1]);
+  return ids;
+}
+
+// Construit un résolveur rId -> data URL à partir des relations du document (word/_rels/document.xml.rels)
+// et des fichiers binaires embarqués dans le .docx (word/media/*).
+async function buildWordImageResolver(zip){
+  const relsFile = zip.file('word/_rels/document.xml.rels');
+  const relMap = {};
+  if (relsFile){
+    const relsXml = await relsFile.async('string');
+    const relRegex = /<Relationship\b[^>]*\/>/g;
+    let rm;
+    while ((rm = relRegex.exec(relsXml))){
+      const idM = rm[0].match(/Id="(rId\d+)"/);
+      const targetM = rm[0].match(/Target="([^"]+)"/);
+      if (idM && targetM && /media\//.test(targetM[1])) relMap[idM[1]] = 'word/'+targetM[1].replace(/^\.\.?\//,'');
+    }
+  }
+  const cache = {};
+  return async function resolveImage(rId){
+    const path = relMap[rId]; if (!path) return null;
+    if (cache[path]) return cache[path];
+    const f = zip.file(path); if (!f) return null;
+    const base64 = await f.async('base64');
+    const ext = (path.split('.').pop()||'png').toLowerCase();
+    const mime = {jpg:'image/jpeg',jpeg:'image/jpeg',gif:'image/gif',bmp:'image/bmp',png:'image/png'}[ext] || 'image/png';
+    const dataUrl = `data:${mime};base64,${base64}`;
+    cache[path] = dataUrl;
+    return dataUrl;
+  };
+}
+
+// Repère les tableaux du document (<w:tr>/<w:tc>) : chaque ligne devient un point de contrôle,
+// avec les photos intégrées directement dans ses cellules. À défaut de tableau, retombe sur un
+// point par paragraphe non vide. Les photos placées hors tableau (ex: section "Annexes" en fin
+// de document) sont rattachées au point qu'elles référencent ("Point 3", "N°3"...) si trouvé
+// dans leur légende, sinon affectées dans l'ordre aux points suivants.
+async function parseWordDocument(zip, xml, filename){
+  const resolveImage = await buildWordImageResolver(zip);
+
+  const rows = [];
+  const trRegex = /<w:tr[ >][\s\S]*?<\/w:tr>/g;
+  let mtr;
+  while ((mtr = trRegex.exec(xml))){
+    const tcRegex = /<w:tc[ >][\s\S]*?<\/w:tc>/g;
+    let mtc; const cells = [];
+    while ((mtc = tcRegex.exec(mtr[0]))){
+      let txt = mtc[0].replace(/<w:tab\/>/g,' ').replace(/<w:br\/>/g,' ').replace(/<[^>]+>/g,' ');
+      cells.push(decodeXmlEntities(txt).replace(/\s+/g,' ').trim());
+    }
+    const embedIds = extractEmbedIds(mtr[0]);
+    if (cells.some(c=>c) || embedIds.length) rows.push({cells, embedIds});
+  }
+
+  const nom = filename.replace(/\.[^.]+$/,'');
+  let points = [];
+  const usedImageIds = new Set();
+
+  if (rows.length > 1){
+    const looksHeader = rows[0].cells.some(c=>/nom|point|observation|état|etat|priorit|catégorie/i.test(c));
+    const dataRows = looksHeader ? rows.slice(1) : rows;
+    for (let i=0;i<dataRows.length;i++){
+      const {cells, embedIds} = dataRows[i];
+      const nomPt = (cells[0]||`Point ${i+1}`).slice(0,150);
+      if (!nomPt) continue;
+      const photos = [];
+      for (const rId of embedIds){
+        usedImageIds.add(rId);
+        const d = await resolveImage(rId);
+        if (d) photos.push(d);
+      }
+      points.push({
+        id: uid(), num: i+1, nom: nomPt, categorie:'', etat:'non_verifie', priorite:'moyenne',
+        pt_eau:false, amiante:'non', dat:false, dat_date:'',
+        commentaire: cells.slice(1).filter(Boolean).join(' — '),
+        photos, signature:null
+      });
+    }
+  } else {
+    const paras = extractWordParagraphs(xml);
+    points = paras.map((txt,i)=>{
+      const lines = txt.split('\n').map(l=>l.trim()).filter(Boolean);
+      return { id:uid(), num:i+1, nom:(lines[0]||'').slice(0,150), categorie:'', etat:'non_verifie', priorite:'moyenne',
+        pt_eau:false, amiante:'non', dat:false, dat_date:'', commentaire: lines.slice(1).join('\n'), photos:[], signature:null };
+    }).filter(p=>p.nom);
+  }
+
+  // Images hors tableau : rattachées à un point via leur légende ou dans l'ordre, SAUF celles
+  // placées après un titre explicite "Annexes" ou "Plans" — celles-ci sont mises à part dans
+  // gamme.annexes plutôt que collées à un point de contrôle.
+  const annexes = [];
+  {
+    const pRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
+    let mp, sequentialIdx = 0, lastCaption = '', inAnnexeSection = false;
+    while ((mp = pRegex.exec(xml))){
+      const embedIds = extractEmbedIds(mp[0]).filter(id=>!usedImageIds.has(id));
+      const txt = decodeXmlEntities(mp[0].replace(/<[^>]+>/g,' ')).replace(/\s+/g,' ').trim();
+      if (/^(annexes?|plans?)\s*:?\s*$/i.test(txt)) inAnnexeSection = true;
+      if (!embedIds.length){ if (txt) lastCaption = txt; continue; }
+      if (inAnnexeSection){
+        for (const rId of embedIds){
+          usedImageIds.add(rId);
+          const d = await resolveImage(rId);
+          if (d) annexes.push({ label: (txt && !/^(annexes?|plans?)\s*:?\s*$/i.test(txt) ? txt : lastCaption) || `Annexe ${annexes.length+1}`, data: d });
+        }
+        if (txt) lastCaption = txt;
+        continue;
+      }
+      if (!points.length){ if (txt) lastCaption = txt; continue; }
+      // La légende peut être dans le paragraphe de l'image elle-même, ou dans le paragraphe qui la précède.
+      const refSource = txt || lastCaption;
+      const refMatch = refSource.match(/(?:point|pièce|n°|numéro)\s*(\d+)/i);
+      let targetPoint = refMatch && points[Number(refMatch[1])-1] ? points[Number(refMatch[1])-1] : null;
+      if (!targetPoint){
+        targetPoint = points[sequentialIdx % points.length];
+        sequentialIdx++;
+      }
+      for (const rId of embedIds){
+        usedImageIds.add(rId);
+        const d = await resolveImage(rId);
+        if (d) targetPoint.photos.push(d);
+      }
+      if (txt) lastCaption = txt;
+    }
+  }
+
+  return {
+    id: uid(), nom, batiment: nom, localisation:'', technicien:'', statut:'planifiee', annexes,
+    date_prevue:'', date_realisee:'', cree_le: new Date().toLocaleDateString('fr-FR'),
+    points
+  };
+}
+
+function parseTxt(txt){
+  const result=[];
+  const gammeBlocks=txt.split(/\nGAMME : /).slice(1);
+  gammeBlocks.forEach(block=>{
+    const lines=block.split('\n');
+    const nom=lines[0].trim();
+    const getField=(label)=>{const l=lines.find(x=>x.includes(label+':'));return l?l.split(':').slice(1).join(':').trim().replace(/^-\s*$/,''):'';};
+    const g={id:uid(),nom,batiment:getField('Bâtiment'),localisation:getField('Localisation'),technicien:getField('Technicien'),
+      statut:getField('Statut')||'planifiee',date_prevue:getField('Date prévue'),date_realisee:getField('Date réalis.'),
+      cree_le:getField('Créé le'),points:[]};
+    // parse points
+    const ptMatches=[...block.matchAll(/\[(\d+)\] ([^\n]+)\n([\s\S]*?)(?=\n  \[\d+\]|$)/g)];
+    ptMatches.forEach(m=>{
+      const ptLines=m[3].split('\n');
+      const pget=(lbl)=>{const l=ptLines.find(x=>x.includes(lbl+':'));return l?l.split(':').slice(1).join(':').trim().replace(/^-\s*$/,''):'';};
+      const commentBlock=ptLines.slice(ptLines.findIndex(x=>x.includes('Commentaire:'))+1).filter(x=>!x.includes(':  ')).join('\n').trim();
+      const commentFirst=pget('Commentaire');
+      g.points.push({id:uid(),num:parseInt(m[1]),nom:m[2].trim(),categorie:pget('Catégorie'),
+        etat:pget('État')||'non_verifie',priorite:pget('Priorité')||'moyenne',
+        pt_eau:pget("Pt d'eau")==='oui',amiante:pget('Amiante')==='oui'?'oui':'non',
+        dat:pget('DAT').startsWith('oui'),dat_date:'',
+        commentaire:[commentFirst,commentBlock].filter(Boolean).join('\n').trim(),
+        photos:[],signature:null});
+    });
+    if(nom)result.push(g);
+  });
+  return result;
+}
+
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`maintenancepro_export_${new Date().toISOString().slice(0,10)}.json`;a.click();
+  toast('💾 Export JSON téléchargé !');
+}
+
+// ── EXPORT EXCEL ──
+function exportExcel(id) {
+  const g = data.find(x => x.id === id); if (!g) return;
+  const wb = XLSX.utils.book_new();
+  const infoData = [
+    ['GAMME DE MAINTENANCE — ' + g.nom],[],
+    ['Bâtiment', g.batiment],['Localisation', g.localisation||'—'],
+    ['Technicien', g.technicien||'—'],['Statut', STATUT_LABELS[g.statut]||g.statut],
+    ['Date prévue', g.date_prevue?fmtDate(g.date_prevue):'—'],
+    ['Date réalisée', g.date_realisee?fmtDate(g.date_realisee):'—'],
+    ['Créé le', g.cree_le||'—'],
+  ];
+  const wsInfo = XLSX.utils.aoa_to_sheet(infoData);
+  wsInfo['!cols'] = [{wch:22},{wch:50}];
+  XLSX.utils.book_append_sheet(wb, wsInfo, 'Informations');
+  const headers = ['N°','Nom du point','Catégorie','État','Priorité','Amiante','DAT','Pt eau','Date DAT','Commentaire'];
+  const rows = (g.points||[]).map(p => [
+    p.num, p.nom, p.categorie,
+    ETAT_LABELS[p.etat]||p.etat,
+    PRIOR_LABELS[p.priorite]||p.priorite,
+    p.amiante==='oui'?'Oui':p.amiante==='a_controler'?'À contrôler':'Non',
+    p.dat?'Oui':'Non', p.pt_eau?'Oui':'Non',
+    p.dat_date?fmtDate(p.dat_date):'—', p.commentaire||''
+  ]);
+  const wsPts = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  wsPts['!cols'] = [{wch:4},{wch:45},{wch:20},{wch:18},{wch:12},{wch:14},{wch:8},{wch:8},{wch:14},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, wsPts, 'Points de contrôle');
+  XLSX.writeFile(wb, `Gamme_${g.nom.replace(/[^a-zA-Z0-9]/g,'_')}.xlsx`);
+  toast('📊 Export Excel téléchargé !');
+}
+
+// ── EXPORT WORD ──
+async function exportWord(id) {
+  const g = data.find(x => x.id === id); if (!g) return;
+  toast('📝 Génération du Word...');
+  try {
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+            AlignmentType, BorderStyle, WidthType, ShadingType, VerticalAlign,
+            PageNumber, Header, Footer } = docx;
+    const border={style:BorderStyle.SINGLE,size:1,color:'CCCCCC'};
+    const borders={top:border,bottom:border,left:border,right:border};
+    const mkCell=(text,opts={})=>new TableCell({
+      borders:opts.borders||borders, width:{size:opts.w||2250,type:WidthType.DXA},
+      shading:opts.bg?{fill:opts.bg,type:ShadingType.CLEAR}:undefined,
+      margins:{top:80,bottom:80,left:120,right:120}, verticalAlign:VerticalAlign.CENTER,
+      children:[new Paragraph({alignment:opts.align||AlignmentType.LEFT,children:[
+        new TextRun({text:String(text||'—'),bold:opts.bold||false,color:opts.color||'1a2332',size:opts.sz||20,font:'Arial'})
+      ]})]
+    });
+    const ch=[];
+    ch.push(new Paragraph({children:[new TextRun({text:'GAMME DE MAINTENANCE',bold:true,size:32,font:'Arial',color:'1E3A5F'})],spacing:{after:100}}));
+    ch.push(new Paragraph({children:[new TextRun({text:g.nom,bold:true,size:28,font:'Arial'})],spacing:{after:200}}));
+    ch.push(new Table({width:{size:9026,type:WidthType.DXA},columnWidths:[2500,6526],rows:[
+      ['Bâtiment',g.batiment],['Technicien',g.technicien||'—'],
+      ['Statut',STATUT_LABELS[g.statut]],['Date prévue',g.date_prevue?fmtDate(g.date_prevue):'—'],
+      ['Date réalisée',g.date_realisee?fmtDate(g.date_realisee):'—'],
+    ].map(([k,v])=>new TableRow({children:[mkCell(k,{w:2500,bold:true,bg:'EEF1F5'}),mkCell(v,{w:6526})]}))}));
+    ch.push(new Paragraph({spacing:{after:240}}));
+    const amiantePts=(g.points||[]).filter(p=>p.amiante==='oui');
+    const amianteCtrlPts=(g.points||[]).filter(p=>p.amiante==='a_controler');
+    if(amiantePts.length) ch.push(new Paragraph({children:[new TextRun({text:`⚠  ${amiantePts.length} point(s) avec présence d'amiante`,bold:true,size:20,color:'D63031',font:'Arial'})],spacing:{after:120}}));
+    if(amianteCtrlPts.length) ch.push(new Paragraph({children:[new TextRun({text:`🔍  ${amianteCtrlPts.length} point(s) à contrôler`,bold:true,size:20,color:'C8880A',font:'Arial'})],spacing:{after:200}}));
+    ch.push(new Paragraph({children:[new TextRun({text:`POINTS DE CONTRÔLE (${(g.points||[]).length})`,bold:true,size:22,color:'1E3A5F',font:'Arial'})],
+      border:{bottom:{style:BorderStyle.SINGLE,size:4,color:'E8A020',space:4}},spacing:{before:200,after:160}}));
+    const cols=[500,2800,1400,1200,900,900,726];
+    const hdrs=['N°','Point de contrôle','Catégorie','État','Priorité','Amiante','DAT'];
+    ch.push(new Table({width:{size:9026,type:WidthType.DXA},columnWidths:cols,rows:[
+      new TableRow({tableHeader:true,children:hdrs.map((h,i)=>mkCell(h,{w:cols[i],bold:true,bg:'1E3A5F',color:'FFFFFF'}))}),
+      ...(g.points||[]).map((p,i)=>{
+        const bg=i%2===0?'F4F6F9':'FFFFFF';
+        const at=p.amiante==='oui'?'Oui ⚠':p.amiante==='a_controler'?'À ctrl 🔍':'Non';
+        const ac=p.amiante==='oui'?'D63031':p.amiante==='a_controler'?'C8880A':'5a6a7a';
+        return new TableRow({children:[
+          mkCell(p.num,{w:500,bold:true,bg,align:AlignmentType.CENTER}),
+          mkCell(p.nom,{w:2800,bg}),mkCell(p.categorie||'—',{w:1400,bg}),
+          mkCell(ETAT_LABELS[p.etat]||p.etat,{w:1200,bg}),
+          mkCell(PRIOR_LABELS[p.priorite],{w:900,bg,color:p.priorite==='haute'?'D63031':'5a6a7a'}),
+          mkCell(at,{w:900,bg,color:ac,bold:p.amiante==='oui'}),
+          mkCell(p.dat?'Oui':'Non',{w:726,bg}),
+        ]});
+      })
+    ]}));
+    ch.push(new Paragraph({spacing:{after:240}}));
+    const ptsC=(g.points||[]).filter(p=>p.commentaire);
+    if(ptsC.length){
+      ch.push(new Paragraph({children:[new TextRun({text:'COMMENTAIRES DÉTAILLÉS',bold:true,size:22,color:'1E3A5F',font:'Arial'})],
+        border:{bottom:{style:BorderStyle.SINGLE,size:4,color:'E8A020',space:4}},spacing:{before:200,after:160}}));
+      ptsC.forEach(p=>{
+        ch.push(new Paragraph({children:[new TextRun({text:`${p.num}. ${p.nom}`,bold:true,size:22,font:'Arial'})],spacing:{before:120,after:60}}));
+        p.commentaire.split('\n').forEach(l=>{ if(l.trim()) ch.push(new Paragraph({children:[new TextRun({text:l,size:20,font:'Arial',color:'5a6a7a'})],indent:{left:360},spacing:{after:40}})); });
+      });
+    }
+    const doc=new Document({
+      styles:{default:{document:{run:{font:'Arial',size:20}}}},
+      sections:[{
+        properties:{page:{size:{width:11906,height:16838},margin:{top:1000,right:1000,bottom:1000,left:1000}}},
+        headers:{default:new Header({children:[new Paragraph({alignment:AlignmentType.RIGHT,border:{bottom:{style:BorderStyle.SINGLE,size:3,color:'1E3A5F',space:4}},children:[new TextRun({text:'MaintenancePro — '+g.nom,size:18,color:'5a6a7a',font:'Arial'})]})]})} ,
+        footers:{default:new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,border:{top:{style:BorderStyle.SINGLE,size:3,color:'E8A020',space:4}},children:[new TextRun({text:'MaintenancePro — Bâtiments Scolaires',size:16,color:'5a6a7a',font:'Arial'})]})]})} ,
+        children:ch
+      }]
+    });
+    const blob=await Packer.toBlob(doc);
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=`Gamme_${g.nom.replace(/[^a-zA-Z0-9]/g,'_')}.docx`; a.click();
+    toast('📝 Export Word téléchargé !');
+  } catch(e){ console.error(e); toast('❌ Erreur Word : '+e.message); }
+}
+
+// ── PDF ──
+function fmtDate(d){if(!d||d==='-')return'—';try{return new Date(d).toLocaleDateString('fr-FR');}catch{return d;}}
+
+function exportPDF(id){
+  const g=data.find(x=>x.id===id);if(!g)return;
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4'});
+  const W=210,M=15;let y=0;
+
+  // Header
+  doc.setFillColor(30,58,95);doc.rect(0,0,W,32,'F');
+  doc.setFillColor(232,160,32);doc.rect(0,29,W,3,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(17);doc.setTextColor(255,255,255);
+  doc.text('GAMME DE MAINTENANCE', M, 14);
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(180,200,230);
+  doc.text('Gestion et suivi des bâtiments scolaires', M, 22);
+  doc.setTextColor(200,220,255);
+  doc.text(`Éditée le ${new Date().toLocaleDateString('fr-FR')}`, W-M, 22,{align:'right'});
+  y=42;
+
+  // Title
+  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(30,58,95);
+  doc.text(g.nom, M, y);y+=8;
+  // Status
+  const scol=g.statut==='terminee'?[0,184,148]:g.statut==='en_cours'?[232,160,32]:[9,132,227];
+  doc.setFillColor(...scol);doc.roundedRect(M,y-4,doc.getTextWidth(STATUT_LABELS[g.statut].toUpperCase())+8,7,1,1,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
+  doc.text(STATUT_LABELS[g.statut].toUpperCase(),M+4,y);y+=10;
+
+  // Info grid
+  doc.setFillColor(238,241,245);doc.rect(M,y,W-M*2,22,'F');
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(90,106,122);
+  const cols=[M+2,M+50,M+100,M+148];
+  ['BÂTIMENT','TECHNICIEN','DATE PRÉVUE','DATE RÉALISÉE'].forEach((lbl,i)=>doc.text(lbl,cols[i],y+6));
+  doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(26,35,50);
+  [g.batiment,g.technicien||'—',fmtDate(g.date_prevue),fmtDate(g.date_realisee)].forEach((val,i)=>{
+    const lines=doc.splitTextToSize(val||'—',46);doc.text(lines[0],cols[i],y+16);
+  });
+  y+=30;
+
+  // Amiante warning
+  const amiantePts=(g.points||[]).filter(p=>p.amiante==='oui');
+  const amianteCtrlPts=(g.points||[]).filter(p=>p.amiante==='a_controler');
+  if(amiantePts.length){
+    doc.setFillColor(214,48,49,0.1);doc.setFillColor(255,235,235);
+    doc.rect(M,y,W-M*2,10,'F');
+    doc.setDrawColor(214,48,49);doc.rect(M,y,W-M*2,10);
+    doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(214,48,49);
+    doc.text(`⚠  ${amiantePts.length} point(s) avec présence d'amiante — Voir détails ci-dessous`,M+4,y+7);
+    y+=16;
+  }
+
+  // Points
+  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(30,58,95);
+  doc.text(`POINTS DE CONTRÔLE (${(g.points||[]).length})`,M,y);
+  doc.setDrawColor(232,160,32);doc.line(M,y+2,W-M,y+2);y+=8;
+
+  (g.points||[]).forEach(p=>{
+    if(y>250){doc.addPage();y=20;}
+    // Card bg
+    const cardH=p.commentaire?32:22;
+    doc.setFillColor(p.amiante?255:p.priorite==='haute'?255:248, p.amiante?245:p.priorite==='haute'?250:250, p.amiante?245:p.priorite==='haute'?250:253);
+    doc.rect(M,y,W-M*2,cardH,'F');
+    if(p.amiante==='oui'){doc.setDrawColor(214,48,49);}else if(p.priorite==='haute'){doc.setDrawColor(214,48,49,0.3);}else{doc.setDrawColor(210,215,220);}
+    doc.rect(M,y,W-M*2,cardH);
+    // Num
+    doc.setFillColor(30,58,95);doc.rect(M,y,8,cardH,'F');
+    doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(255,255,255);
+    doc.text(String(p.num),M+4,y+cardH/2+2,{align:'center'});
+    // Name
+    doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(26,35,50);
+    const nameLines=doc.splitTextToSize(p.nom,W-M*2-55);
+    doc.text(nameLines[0],M+11,y+7);
+    // Badges
+    let bx=M+11;const by=y+13;
+    [[p.categorie,'#5a6a7a'],[ETAT_LABELS[p.etat],'#0984e3'],[PRIOR_LABELS[p.priorite],p.priorite==='haute'?'#d63031':'#5a6a7a']].forEach(([lbl,col])=>{
+      if(!lbl)return;
+      doc.setFont('helvetica','bold');doc.setFontSize(7);doc.setTextColor(col);
+      doc.text(lbl,bx,by);bx+=doc.getTextWidth(lbl)+6;
+    });
+    if(p.amiante==='oui'){doc.setTextColor(214,48,49);doc.text('⚠ AMIANTE',bx,by);bx+=doc.getTextWidth('⚠ AMIANTE')+6;}
+    if(p.dat){doc.setTextColor(9,132,227);doc.text('DAT',bx,by);}
+    if(p.commentaire){
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(90,106,122);
+      const clines=doc.splitTextToSize(p.commentaire.replace(/\n/g,' — '),W-M*2-14);
+      doc.text(clines[0],M+11,y+20);
+    }
+    y+=cardH+4;
+  });
+
+  // Signature zone
+  if(y<240){
+    y=Math.max(y+10,230);
+    doc.setDrawColor(200,210,220);doc.line(M,y,M+65,y);doc.line(M+90,y,M+155,y);
+    doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(140,155,170);
+    doc.text('Technicien — Signature',M,y+5);doc.text('Responsable — Visa',M+90,y+5);
+  }
+
+  // Footer
+  const pages=doc.internal.getNumberOfPages();
+  for(let p=1;p<=pages;p++){
+    doc.setPage(p);
+    doc.setFillColor(30,58,95);doc.rect(0,287,W,10,'F');
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(180,200,230);
+    doc.text('MaintenancePro — Gestion Bâtiments Scolaires',M,293);
+    doc.text(`Page ${p}/${pages}`,W-M,293,{align:'right'});
+  }
+  doc.save(`Gamme_${g.nom.replace(/[^a-zA-Z0-9]/g,'_')}.pdf`);
+  toast('📄 PDF téléchargé !');
+}
+
+// ── SERVICE WORKER ──
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
+
+// ── INIT ──
+renderList();
+showDashboard();
+if(localStorage.getItem('mp_dark')==='1'){document.getElementById('darkBtn').textContent='☀️';}
+</script>
+</body>
+</html>
