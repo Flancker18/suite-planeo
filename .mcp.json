@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "cosmonote": {
-      "type": "http",
-      "url": "https://nebula.cosmonote.ai/mcp"
-    }
-  }
-}
