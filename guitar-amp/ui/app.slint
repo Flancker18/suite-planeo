@@ -26,6 +26,10 @@ export global S {
     in-out property <int> beat: -1;
     in-out property <[string]> devs-in;
     in-out property <[string]> devs-out;
+    in-out property <[string]> devs-out2;
+    in-out property <int> out2-sel;
+    in-out property <int> buffer-sel: 1;
+    in-out property <bool> settings-open;
     in-out property <[string]> presets;
     in-out property <int> in-sel;
     in-out property <int> out-sel;
@@ -54,6 +58,7 @@ export global S {
     callback tab-toggle-wait();
     callback tab-set-speed(float);
     callback edit(string, float);
+    callback refresh-devices();
     callback start();
     callback stop();
     callback toggle-rec();
@@ -313,10 +318,8 @@ export component AppWindow inherits Window {
             spacing: 10px;
             height: 34px;
             Text { text: "GUITAR AMP"; color: #ff9a3c; font-size: 20px; font-weight: 800; vertical-alignment: center; }
-            Text { text: "Entrée"; color: #b9a88f; vertical-alignment: center; }
-            ComboBox { model: S.devs-in; current-index <=> S.in-sel; enabled: !S.running; selected(i) => { S.pick-in(S.in-sel); } }
-            Text { text: "Sortie"; color: #b9a88f; vertical-alignment: center; }
-            ComboBox { model: S.devs-out; current-index <=> S.out-sel; enabled: !S.running; selected(i) => { S.pick-out(S.out-sel); } }
+            Btn { text: "⚙ Paramètres"; min-width: 120px; height: 34px; clicked => { S.settings-open = true; } }
+            Rectangle { }
             Rectangle {
                 width: 90px;
                 border-radius: 5px;
@@ -324,8 +327,10 @@ export component AppWindow inherits Window {
                 Text { text: S.running ? "Arrêter" : "Démarrer"; color: white; font-weight: 700; }
                 TouchArea { clicked => { if (S.running) { S.stop(); } else { S.start(); } } }
             }
-            Text { text: S.status; color: #8f7f6a; vertical-alignment: center; }
         }
+
+        // --- Message d'état (périphériques utilisés, erreurs)
+        Text { text: S.status; color: #d8c7ae; font-size: 12px; wrap: word-wrap; }
 
         // --- Entrée / sortie
         HorizontalLayout {
@@ -526,6 +531,55 @@ export component AppWindow inherits Window {
             min-height: 190px;
             if !S.tab-shown: AmpGrille { }
             if S.tab-shown: TabView { }
+        }
+    }
+    // --- Menu Paramètres (périphériques audio)
+    if S.settings-open: Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #000000bb;
+        TouchArea { }
+        Rectangle {
+            width: min(600px, parent.width - 40px);
+            height: 470px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: #211c18;
+            border-radius: 10px;
+            border-width: 2px;
+            border-color: #ff9a3c;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 6px;
+                HorizontalLayout {
+                    Text { text: "Paramètres audio"; color: #ff9a3c; font-size: 18px; font-weight: 800; vertical-alignment: center; }
+                    Rectangle { }
+                    Btn { text: "✕"; clicked => { S.settings-open = false; } }
+                }
+                Text { text: "Entrée (ta guitare : câble jack USB, interface...)"; color: #d8c7ae; font-size: 12px; }
+                ComboBox { model: S.devs-in; current-index <=> S.in-sel; enabled: !S.running; }
+                Text { text: "Sortie principale (haut-parleurs, casque...)"; color: #d8c7ae; font-size: 12px; }
+                ComboBox { model: S.devs-out; current-index <=> S.out-sel; enabled: !S.running; }
+                Text { text: "Sortie supplémentaire : le son sort aussi ici (par ex. prise jack casque)"; color: #d8c7ae; font-size: 12px; wrap: word-wrap; }
+                ComboBox { model: S.devs-out2; current-index <=> S.out2-sel; enabled: !S.running; }
+                Text { text: "Taille du buffer (plus petit = moins de retard, mais risque de craquements)"; color: #d8c7ae; font-size: 12px; wrap: word-wrap; }
+                ComboBox { model: ["64", "128", "256", "512"]; current-index <=> S.buffer-sel; enabled: !S.running; }
+                Text {
+                    text: S.running ? "Arrête l'audio pour changer ces réglages." : "Les choix sont mémorisés. Un câble guitare USB est repéré tout seul.";
+                    color: #8f7f6a;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+                Rectangle { }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Btn { text: "↻ Actualiser les périphériques"; min-width: 220px; clicked => { S.refresh-devices(); } }
+                    Rectangle { }
+                    Btn { text: "Fermer"; accent: true; min-width: 90px; clicked => { S.settings-open = false; } }
+                }
+            }
         }
     }
 }

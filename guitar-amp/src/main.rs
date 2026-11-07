@@ -66,21 +66,39 @@ fn settings_path() -> Option<std::path::PathBuf> {
     dirs::config_dir().map(|d| d.join("guitar-amp").join("settings.json"))
 }
 
+/// Choix mémorisés d'un lancement à l'autre.
+#[derive(Default, Serialize, Deserialize)]
+struct Settings {
+    rec_dir: Option<String>,
+    input: Option<String>,
+    output: Option<String>,
+    output2: Option<String>,
+    buffer: Option<u32>,
+}
+
+fn load_settings() -> Settings {
+    settings_path().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
+fn update_settings(f: impl FnOnce(&mut Settings)) {
+    let mut s = load_settings();
+    f(&mut s);
+    if let Some(p) = settings_path() {
+        let _ = std::fs::create_dir_all(p.parent().unwrap());
+        let _ = std::fs::write(p, serde_json::to_string_pretty(&s).unwrap_or_default());
+    }
+}
+
 /// Dossier d'enregistrement : celui choisi la dernière fois, sinon Documents\Guitar Amp.
 fn load_rec_dir() -> std::path::PathBuf {
-    let saved = settings_path()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .and_then(|v| v["rec_dir"].as_str().map(std::path::PathBuf::from));
-    saved.unwrap_or_else(|| dirs::document_dir().unwrap_or_else(|| ".".into()).join("Guitar Amp"))
+    load_settings().rec_dir.map(std::path::PathBuf::from).unwrap_or_else(|| dirs::document_dir().unwrap_or_else(|| ".".into()).join("Guitar Amp"))
 }
 
 fn save_rec_dir(dir: &std::path::Path) {
-    if let Some(p) = settings_path() {
-        let _ = std::fs::create_dir_all(p.parent().unwrap());
-        let _ = std::fs::write(p, serde_json::json!({ "rec_dir": dir.to_string_lossy() }).to_string());
-    }
+    update_settings(|s| s.rec_dir = Some(dir.to_string_lossy().into_owned()));
 }
+
+const BUFFERS: [u32; 4] = [64, 128, 256, 512];
 
 struct State {
     follower: tab::Follower,
@@ -107,6 +125,35 @@ struct State {
     out_disp: f32,
     hz: f32,
     silent_ticks: u32,
+}
+
+fn device_model(first: &str, list: &[String]) -> ModelRc<SharedString> {
+    let mut l = vec![SharedString::from(first)];
+    l.extend(list.iter().map(|s| SharedString::from(s.as_str())));
+    ModelRc::new(VecModel::from(l))
+}
+
+/// Relit les périphériques audio. Si un câble guitare USB vient d'être branché, il est sélectionné tout seul.
+fn rescan_devices(st: &mut State, g: &S) {
+    let (ins, outs) = audio::device_names();
+    if ins == st.devs_in && outs == st.devs_out {
+        return;
+    }
+    let chosen = |sel: i32, list: &Vec<String>| if sel > 0 { list.get(sel as usize - 1).cloned() } else { None };
+    let (cur_in, cur_out, cur_out2) = (chosen(g.get_in_sel(), &st.devs_in), chosen(g.get_out_sel(), &st.devs_out), chosen(g.get_out2_sel(), &st.devs_out));
+    let arrived = audio::guitar_input_index(&ins).filter(|&i| !st.devs_in.contains(&ins[i]));
+    st.devs_in = ins;
+    st.devs_out = outs;
+    g.set_devs_in(device_model("Par défaut", &st.devs_in));
+    g.set_devs_out(device_model("Par défaut", &st.devs_out));
+    g.set_devs_out2(device_model("Aucune", &st.devs_out));
+    let pos = |name: &Option<String>, list: &Vec<String>| name.as_ref().and_then(|n| list.iter().position(|x| x == n)).map(|i| i as i32 + 1).unwrap_or(0);
+    g.set_in_sel(match arrived {
+        Some(i) => i as i32 + 1,
+        None => pos(&cur_in, &st.devs_in),
+    });
+    g.set_out_sel(pos(&cur_out, &st.devs_out));
+    g.set_out2_sel(pos(&cur_out2, &st.devs_out));
 }
 
 fn preset_names(st: &State) -> ModelRc<SharedString> {
@@ -213,13 +260,16 @@ fn main() -> Result<(), slint::PlatformError> {
     let g = ui.global::<S>();
 
     let (ins, outs) = audio::device_names();
-    let with_default = |v: &Vec<String>| {
-        let mut l = vec![SharedString::from("Par défaut")];
-        l.extend(v.iter().map(|s| SharedString::from(s.as_str())));
-        ModelRc::new(VecModel::from(l))
-    };
-    g.set_devs_in(with_default(&ins));
-    g.set_devs_out(with_default(&outs));
+    let saved = load_settings();
+    let find = |name: &Option<String>, list: &Vec<String>| name.as_ref().and_then(|n| list.iter().position(|x| x == n)).map(|i| i as i32 + 1);
+    g.set_devs_in(device_model("Par défaut", &ins));
+    g.set_devs_out(device_model("Par défaut", &outs));
+    g.set_devs_out2(device_model("Aucune", &outs));
+    // Entrée : celle choisie la dernière fois, sinon un câble guitare / interface USB repéré par son nom
+    g.set_in_sel(find(&saved.input, &ins).or_else(|| audio::guitar_input_index(&ins).map(|i| i as i32 + 1)).unwrap_or(0));
+    g.set_out_sel(find(&saved.output, &outs).unwrap_or(0));
+    g.set_out2_sel(find(&saved.output2, &outs).unwrap_or(0));
+    g.set_buffer_sel(BUFFERS.iter().position(|&b| Some(b) == saved.buffer).unwrap_or(1) as i32);
     g.set_v(shared.params.to_ui());
 
     let state = Rc::new(RefCell::new(State {
@@ -270,11 +320,22 @@ fn main() -> Result<(), slint::PlatformError> {
             let g = ui.global::<S>();
             let mut st = st.borrow_mut();
             let pick = |sel: i32, list: &Vec<String>| if sel > 0 { list.get(sel as usize - 1).cloned() } else { None };
-            let (i, o) = (pick(g.get_in_sel(), &st.devs_in), pick(g.get_out_sel(), &st.devs_out));
-            match audio::start(&sh, i.as_deref(), o.as_deref(), 128) {
+            let (i, o, o2) = (pick(g.get_in_sel(), &st.devs_in), pick(g.get_out_sel(), &st.devs_out), pick(g.get_out2_sel(), &st.devs_out));
+            let buffer = BUFFERS[(g.get_buffer_sel().max(0) as usize).min(BUFFERS.len() - 1)];
+            match audio::start(&sh, i.as_deref(), o.as_deref(), o2.as_deref(), buffer) {
                 Ok(e) => {
                     let ms = e.buffer as f32 / e.sample_rate as f32 * 1000.0;
-                    g.set_status(format!("En marche — {} Hz, buffer {} (~{:.1} ms par bloc)", e.sample_rate, e.buffer, ms).into());
+                    let conv = if e.input_rate != e.sample_rate { format!(" (conversion {} → {} Hz)", e.input_rate, e.sample_rate) } else { String::new() };
+                    let second = e.output2_name.as_ref().map(|n| format!(" + {n}")).unwrap_or_default();
+                    g.set_status(
+                        format!("En marche — Entrée : {} | Sortie : {}{} | {} Hz{}, buffer {} (~{:.1} ms)", e.input_name, e.output_name, second, e.sample_rate, conv, e.buffer, ms).into(),
+                    );
+                    update_settings(|s| {
+                        s.input = i.clone();
+                        s.output = o.clone();
+                        s.output2 = o2.clone();
+                        s.buffer = Some(buffer);
+                    });
                     st.engine = Some(e);
                     g.set_running(true);
                 }
@@ -324,6 +385,25 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             } else {
                 g.set_rec_info("Démarre d'abord l'audio.".into());
+            }
+        });
+    }
+
+    // Actualiser la liste des périphériques (bouton) et détection automatique toutes les 2 s à l'arrêt
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_refresh_devices(move || {
+            rescan_devices(&mut st.borrow_mut(), &weak.upgrade().unwrap().global::<S>());
+        });
+    }
+    let rescan_timer = Timer::default();
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        rescan_timer.start(TimerMode::Repeated, Duration::from_secs(2), move || {
+            let ui = weak.upgrade().unwrap();
+            let g = ui.global::<S>();
+            if !g.get_running() {
+                rescan_devices(&mut st.borrow_mut(), &g);
             }
         });
     }
