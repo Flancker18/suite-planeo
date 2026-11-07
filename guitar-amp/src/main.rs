@@ -116,7 +116,7 @@ struct State {
     engine: Option<Engine>,
     recorder: Option<Recorder>,
     rec_start: Instant,
-    last_rec: Option<(Arc<Vec<f32>>, u32)>,
+    last_rec: Option<(Arc<audio::Clip>, u32)>,
     play_len: usize,
     devs_in: Vec<String>,
     devs_out: Vec<String>,

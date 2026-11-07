@@ -20,7 +20,7 @@ pub struct Shared {
     pub stream_error: AtomicBool,
     pub rec_on: AtomicBool,
     /// Lecture d'un enregistrement : tampon, numéro de version (change à chaque lecture), marche/arrêt, boucle, position.
-    pub play_buf: Mutex<Option<Arc<Vec<f32>>>>,
+    pub play_buf: Mutex<Option<Arc<Clip>>>,
     pub play_gen: AtomicU32,
     pub play_on: AtomicBool,
     pub play_loop: AtomicBool,
@@ -91,15 +91,54 @@ impl Resampler {
     }
 }
 
+/// Durée maximale gardée en mémoire pour la réécoute (le fichier WAV, lui, n'a pas de limite).
+pub const MAX_CLIP_SECONDS: usize = 3600;
+const CHUNK: usize = 1 << 16;
+
+/// Enregistrement en mémoire : 16 bits (2 octets par échantillon, ~350 Mo par heure à 48 kHz),
+/// rangé par morceaux pour ne jamais recopier une énorme zone mémoire en cours d'enregistrement.
+#[derive(Default)]
+pub struct Clip {
+    chunks: Vec<Vec<i16>>,
+    len: usize,
+}
+
+impl Clip {
+    pub fn push(&mut self, v: i16) {
+        if self.len % CHUNK == 0 {
+            self.chunks.push(Vec::with_capacity(CHUNK));
+        }
+        self.chunks.last_mut().unwrap().push(v);
+        self.len += 1;
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    /// Échantillon en flottant entre -1 et 1.
+    #[inline]
+    pub fn get(&self, i: usize) -> f32 {
+        self.chunks[i / CHUNK][i % CHUNK] as f32 / 32768.0
+    }
+}
+
+/// Convertit un échantillon flottant en 16 bits.
+#[inline]
+pub fn to_i16(x: f32) -> i16 {
+    (x.clamp(-1.0, 1.0) * 32767.0) as i16
+}
+
 /// Lecteur d'un enregistrement en mémoire, avec boucle.
 #[derive(Default)]
 pub struct Playback {
-    buf: Option<Arc<Vec<f32>>>,
+    buf: Option<Arc<Clip>>,
     pub pos: usize,
 }
 
 impl Playback {
-    pub fn load(&mut self, buf: Option<Arc<Vec<f32>>>) {
+    pub fn load(&mut self, buf: Option<Arc<Clip>>) {
         self.buf = buf;
         self.pos = 0;
     }
@@ -117,26 +156,27 @@ impl Playback {
                 return None;
             }
         }
-        let v = b[self.pos];
+        let v = b.get(self.pos);
         self.pos += 1;
         Some(v)
     }
 }
 
 /// Change la fréquence d'échantillonnage d'un enregistrement (interpolation linéaire).
-pub fn resample(buf: &[f32], from: u32, to: u32) -> Vec<f32> {
+pub fn resample(buf: &Clip, from: u32, to: u32) -> Clip {
     let mut r = Resampler::new(from as f32 / to as f32);
     let n = (buf.len() as f64 * to as f64 / from as f64) as usize;
     let mut i = 0usize;
-    (0..n)
-        .map(|_| {
-            r.next(|| {
-                let v = buf.get(i).copied().unwrap_or(0.0);
-                i += 1;
-                v
-            })
-        })
-        .collect()
+    let mut out = Clip::default();
+    for _ in 0..n {
+        let y = r.next(|| {
+            let v = if i < buf.len() { buf.get(i) } else { 0.0 };
+            i += 1;
+            v
+        });
+        out.push(to_i16(y));
+    }
+    out
 }
 
 /// Noms des périphériques que Windows utilise « par défaut » (entrée, sortie).
@@ -423,7 +463,7 @@ pub fn start(shared: &Arc<Shared>, in_name: Option<&str>, out_name: Option<&str>
 pub struct Recorder {
     shared: Arc<Shared>,
     stop: Arc<AtomicBool>,
-    handle: std::thread::JoinHandle<Vec<f32>>,
+    handle: std::thread::JoinHandle<Clip>,
     pub path: String,
 }
 
@@ -431,20 +471,21 @@ pub fn start_recording(shared: &Arc<Shared>, sample_rate: u32, dir: &std::path::
     std::fs::create_dir_all(dir).map_err(|e| format!("Dossier inaccessible : {e}"))?;
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let path = dir.join(format!("guitare-{secs}.wav")).to_string_lossy().into_owned();
-    let spec = hound::WavSpec { channels: 1, sample_rate, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+    let spec = hound::WavSpec { channels: 1, sample_rate, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
     let mut writer = hound::WavWriter::create(&path, spec).map_err(|e| e.to_string())?;
     while shared.rec_q.pop().is_some() {}
     shared.rec_on.store(true, Relaxed);
     let stop = Arc::new(AtomicBool::new(false));
     let (s2, st2) = (shared.clone(), stop.clone());
-    let cap = sample_rate as usize * 600; // 10 minutes gardées en mémoire pour la lecture (le fichier, lui, n'a pas de limite)
+    let cap = sample_rate as usize * MAX_CLIP_SECONDS; // 1 heure gardée en mémoire pour la lecture (le fichier, lui, n'a pas de limite)
     let handle = std::thread::spawn(move || {
-        let mut kept: Vec<f32> = Vec::new();
+        let mut kept = Clip::default();
         loop {
             while let Some(x) = s2.rec_q.pop() {
-                let _ = writer.write_sample(x);
+                let v = to_i16(x);
+                let _ = writer.write_sample(v);
                 if kept.len() < cap {
-                    kept.push(x);
+                    kept.push(v);
                 }
             }
             if st2.load(Relaxed) {
@@ -459,7 +500,7 @@ pub fn start_recording(shared: &Arc<Shared>, sample_rate: u32, dir: &std::path::
 
 impl Recorder {
     /// Termine l'enregistrement : (chemin du fichier WAV, échantillons gardés pour la lecture).
-    pub fn finish(self) -> (String, Vec<f32>) {
+    pub fn finish(self) -> (String, Clip) {
         self.shared.rec_on.store(false, Relaxed);
         self.stop.store(true, Relaxed);
         let kept = self.handle.join().unwrap_or_default();
@@ -517,27 +558,88 @@ mod tests {
         assert!(peak > 0.48 && peak < 0.51, "pic {peak}");
     }
 
+    fn clip_of(v: &[i16]) -> Arc<Clip> {
+        let mut c = Clip::default();
+        for &x in v {
+            c.push(x);
+        }
+        Arc::new(c)
+    }
+
+    #[test]
+    fn clip_spans_many_chunks_without_losing_samples() {
+        let mut c = Clip::default();
+        for i in 0..(CHUNK * 2 + 123) {
+            c.push((i % 30000) as i16);
+        }
+        assert_eq!(c.len(), CHUNK * 2 + 123);
+        for i in [0usize, 1, CHUNK - 1, CHUNK, CHUNK + 1, CHUNK * 2, CHUNK * 2 + 122] {
+            assert_eq!(c.get(i), (i % 30000) as f32 / 32768.0, "i={i}");
+        }
+    }
+
     #[test]
     fn playback_plays_once_or_loops() {
-        let data = Arc::new(vec![1.0f32, 2.0, 3.0]);
+        let data = clip_of(&[3277, 6554, 9830]);
         let mut p = Playback::default();
         assert_eq!(p.next(false), None); // rien de chargé
         p.load(Some(data.clone()));
-        assert_eq!([p.next(false), p.next(false), p.next(false), p.next(false)], [Some(1.0), Some(2.0), Some(3.0), None]);
+        let all = [p.next(false), p.next(false), p.next(false), p.next(false)];
+        assert_eq!(all[3], None);
+        assert!(all[..3].iter().all(|v| v.is_some()));
+        assert!((all[0].unwrap() - 0.1).abs() < 1e-3 && (all[2].unwrap() - 0.3).abs() < 1e-3);
         p.load(Some(data));
         let looped: Vec<f32> = (0..7).filter_map(|_| p.next(true)).collect();
-        assert_eq!(looped, vec![1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0]);
-        p.load(Some(Arc::new(vec![])));
+        assert_eq!(looped.len(), 7);
+        assert_eq!(looped[0], looped[3]);
+        assert_eq!(looped[0], looped[6]);
+        assert_ne!(looped[0], looped[1]);
+        p.load(Some(Arc::new(Clip::default())));
         assert_eq!(p.next(true), None);
     }
 
     #[test]
     fn resample_changes_length_and_keeps_pitch() {
-        let sine: Vec<f32> = (0..44100).map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 44100.0).sin()).collect();
+        let mut sine = Clip::default();
+        for i in 0..44100 {
+            sine.push(to_i16((2.0 * std::f32::consts::PI * 440.0 * i as f32 / 44100.0).sin() * 0.8));
+        }
         let out = resample(&sine, 44100, 48000);
         assert!((out.len() as i32 - 48000).abs() <= 1);
-        let crossings = out.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+        let samples: Vec<f32> = (0..out.len()).map(|i| out.get(i)).collect();
+        let crossings = samples.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
         assert!((crossings as i32 - 440).abs() <= 2);
+    }
+
+    #[test]
+    fn recorder_writes_a_16_bit_wav_and_keeps_a_copy() {
+        let shared = Arc::new(Shared::new());
+        let dir = std::env::temp_dir().join("guitar-amp-rec-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let rec = start_recording(&shared, 48000, &dir).expect("start");
+        let total = 100_000usize;
+        for i in 0..total {
+            let v = (i as f32 * 0.01).sin() * 0.5;
+            while shared.rec_q.push(v).is_err() {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+        let (path, clip) = rec.finish();
+        assert_eq!(clip.len(), total);
+        let reader = hound::WavReader::open(&path).expect("wav");
+        assert_eq!(reader.spec().bits_per_sample, 16);
+        assert_eq!(reader.spec().sample_rate, 48000);
+        assert_eq!(reader.len() as usize, total);
+        let on_disk: Vec<i16> = hound::WavReader::open(&path).unwrap().samples::<i16>().map(|s| s.unwrap()).collect();
+        assert_eq!(on_disk[12345], (clip.get(12345) * 32768.0).round() as i16);
+    }
+
+    #[test]
+    fn one_hour_fits_the_memory_limit() {
+        // 1 h à 48 kHz = 172,8 millions d'échantillons x 2 octets = environ 345 Mo
+        assert!(MAX_CLIP_SECONDS >= 3600);
+        let bytes = 48000usize * MAX_CLIP_SECONDS * 2;
+        assert!(bytes < 400_000_000, "{bytes}");
     }
 
     #[test]
