@@ -193,9 +193,11 @@ pub struct Recorder {
 }
 
 pub fn start_recording(shared: &Arc<Shared>, sample_rate: u32) -> Result<Recorder, String> {
-    std::fs::create_dir_all("enregistrements").map_err(|e| e.to_string())?;
+    // Dans Documents\Guitar Amp : le dossier d'installation (Program Files) n'est pas modifiable.
+    let dir = dirs::document_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join("Guitar Amp");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let path = format!("enregistrements/guitare-{secs}.wav");
+    let path = dir.join(format!("guitare-{secs}.wav")).to_string_lossy().into_owned();
     let spec = hound::WavSpec { channels: 1, sample_rate, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
     let mut writer = hound::WavWriter::create(&path, spec).map_err(|e| e.to_string())?;
     while shared.rec_q.pop().is_some() {}
