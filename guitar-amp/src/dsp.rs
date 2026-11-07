@@ -285,29 +285,104 @@ impl Chorus {
     }
 }
 
+/// Un filtre de timbre : (type, fréquence, Q, gain en dB).
+type Band = (FilterKind, f32, f32, f32);
+
+/// Un modèle d'ampli : saturation ET couleur. C'est la couleur (médiums, graves, aigus, baffle) qui fait
+/// qu'un Clean, un Crunch, un Lead et un Metal ne sonnent pas pareil, pas seulement la quantité de saturation.
 struct AmpModel {
     k1: f32,
     k2: f32,
     gain_max: f32,
     two_stages: bool,
+    /// Filtre passe-haut avant la saturation : plus il est haut, plus le son est serré (metal).
     hp: f32,
-    mid_shift: f32,
+    /// Boost de médiums AVANT la saturation (comme une pédale « screamer ») : sustain chantant.
+    boost: Band,
+    /// Entre les deux étages de saturation : passe-haut / passe-bas (retire la boue et le grésillement).
+    inter_hp: f32,
+    inter_lp: f32,
+    /// Couleur de l'ampli APRÈS la saturation.
+    voice: [Band; 3],
+    /// Baffle : coupure des aigus, et creux (fréquence, gain dB).
+    cab_lp: f32,
+    cab_dip: (f32, f32),
     trim: f32,
 }
 const MODELS: [AmpModel; 4] = [
-    AmpModel { k1: 1.2, k2: 1.0, gain_max: 4.0, two_stages: false, hp: 60.0, mid_shift: 0.0, trim: 1.0 },
-    AmpModel { k1: 3.5, k2: 1.0, gain_max: 10.0, two_stages: false, hp: 80.0, mid_shift: 1.0, trim: 0.6 },
-    AmpModel { k1: 6.0, k2: 4.8, gain_max: 25.0, two_stages: true, hp: 100.0, mid_shift: 2.0, trim: 0.45 },
-    AmpModel { k1: 9.0, k2: 7.0, gain_max: 50.0, two_stages: true, hp: 140.0, mid_shift: -4.0, trim: 0.4 },
+    // Clean : jazz / country. Graves chauds, léger creux de médiums, aigus brillants, aucune casse.
+    AmpModel {
+        k1: 1.2,
+        k2: 1.0,
+        gain_max: 4.0,
+        two_stages: false,
+        hp: 55.0,
+        boost: (Peaking, 1000.0, 0.8, 0.0),
+        inter_hp: 200.0,
+        inter_lp: 8000.0,
+        voice: [(LowShelf, 110.0, 0.7, 3.0), (Peaking, 450.0, 0.9, -2.0), (HighShelf, 5000.0, 0.7, 2.5)],
+        cab_lp: 6500.0,
+        cab_dip: (3000.0, -1.5),
+        trim: 1.6,
+    },
+    // Crunch : blues / rock. Médiums en avant façon « plexi », attaque à 2,5 kHz.
+    AmpModel {
+        k1: 3.2,
+        k2: 1.0,
+        gain_max: 10.0,
+        two_stages: false,
+        hp: 80.0,
+        boost: (Peaking, 900.0, 0.9, 3.0),
+        inter_hp: 200.0,
+        inter_lp: 8000.0,
+        voice: [(LowShelf, 90.0, 0.7, -4.0), (Peaking, 1200.0, 1.0, 4.0), (Peaking, 3000.0, 1.0, 6.0)],
+        cab_lp: 6500.0,
+        cab_dip: (3800.0, -2.0),
+        trim: 0.85,
+    },
+    // Lead : solos. Gros boost de médiums avant la saturation, aigus adoucis : son rond qui chante.
+    AmpModel {
+        k1: 5.0,
+        k2: 4.0,
+        gain_max: 30.0,
+        two_stages: true,
+        hp: 110.0,
+        boost: (Peaking, 1000.0, 0.8, 7.0),
+        inter_hp: 220.0,
+        inter_lp: 4500.0,
+        voice: [(LowShelf, 110.0, 0.7, 4.5), (Peaking, 900.0, 0.8, 5.0), (HighShelf, 3000.0, 0.7, -6.0)],
+        cab_lp: 3600.0,
+        cab_dip: (3000.0, -2.0),
+        trim: 0.7,
+    },
+    // Metal : Gojira, riffs serrés. Graves tenus, médiums creusés, mordant à 3 kHz.
+    AmpModel {
+        k1: 7.0,
+        k2: 6.0,
+        gain_max: 60.0,
+        two_stages: true,
+        hp: 160.0,
+        boost: (Peaking, 720.0, 1.0, 5.0),
+        inter_hp: 250.0,
+        inter_lp: 3500.0,
+        voice: [(Peaking, 550.0, 0.7, -10.0), (LowShelf, 90.0, 0.7, 6.0), (Peaking, 3000.0, 1.2, 5.0)],
+        cab_lp: 5200.0,
+        cab_dip: (2000.0, -1.5),
+        trim: 0.9,
+    },
 ];
 
 struct Amp {
     sr: f32,
+    model_set: usize,
     pre_hp: Biquad,
+    boost: Biquad,
     inter_hp: Biquad,
+    inter_lp: Biquad,
     dc: Biquad,
     os1: Oversampler2x,
     os2: Oversampler2x,
+    voice: [Biquad; 3],
     bass: Biquad,
     mid: Biquad,
     treble: Biquad,
@@ -320,13 +395,18 @@ struct Amp {
 }
 impl Amp {
     fn new(sr: f32) -> Self {
+        let pk = || Biquad::new(Peaking, sr, 1000.0, 1.0, 0.0);
         Self {
             sr,
+            model_set: usize::MAX,
             pre_hp: Biquad::new(FilterKind::HighPass, sr, 80.0, 0.7, 0.0),
+            boost: pk(),
             inter_hp: Biquad::new(FilterKind::HighPass, sr, 200.0, 0.5, 0.0),
+            inter_lp: Biquad::new(FilterKind::LowPass, sr, 6000.0, 0.7, 0.0),
             dc: Biquad::new(FilterKind::HighPass, sr, 20.0, 0.7, 0.0),
             os1: Oversampler2x::new(sr),
             os2: Oversampler2x::new(sr),
+            voice: [pk(), pk(), pk()],
             bass: Biquad::new(FilterKind::LowShelf, sr, 120.0, 0.7, 0.0),
             mid: Biquad::new(FilterKind::Peaking, sr, 700.0, 0.9, 0.0),
             treble: Biquad::new(FilterKind::HighShelf, sr, 3200.0, 0.7, 0.0),
@@ -338,16 +418,29 @@ impl Amp {
             gain: Smooth::new(1.0, 15.0, sr),
         }
     }
-    fn model(p: &Values) -> &'static AmpModel {
-        &MODELS[(p.amp_model.round() as usize).min(MODELS.len() - 1)]
+    fn index(p: &Values) -> usize {
+        (p.amp_model.round().max(0.0) as usize).min(MODELS.len() - 1)
     }
     fn update(&mut self, p: &Values) {
-        let m = Self::model(p);
         let sr = self.sr;
-        self.pre_hp.set(FilterKind::HighPass, sr, m.hp, 0.7, 0.0);
+        let idx = Self::index(p);
+        if idx != self.model_set {
+            // On change de modèle : toute la couleur de l'ampli change d'un coup
+            self.model_set = idx;
+            let m = &MODELS[idx];
+            self.pre_hp.set(FilterKind::HighPass, sr, m.hp, 0.7, 0.0);
+            self.boost.set(m.boost.0, sr, m.boost.1, m.boost.2, m.boost.3);
+            self.inter_hp.set(FilterKind::HighPass, sr, m.inter_hp, 0.5, 0.0);
+            self.inter_lp.set(FilterKind::LowPass, sr, m.inter_lp, 0.7, 0.0);
+            for (f, b) in self.voice.iter_mut().zip(m.voice.iter()) {
+                f.set(b.0, sr, b.1, b.2, b.3);
+            }
+            self.cab_lp1.set(FilterKind::LowPass, sr, m.cab_lp, 0.7, 0.0);
+            self.cab_lp2.set(FilterKind::LowPass, sr, m.cab_lp, 0.9, 0.0);
+            self.cab_dip.set(Peaking, sr, m.cab_dip.0, 1.2, m.cab_dip.1);
+        }
         self.bass.set(FilterKind::LowShelf, sr, 120.0, 0.7, knob_db(p.bass));
-        let shift = if p.inst > 0.5 { 0.0 } else { m.mid_shift };
-        self.mid.set(FilterKind::Peaking, sr, 700.0, 0.9, knob_db(p.mid) + shift);
+        self.mid.set(FilterKind::Peaking, sr, 700.0, 0.9, knob_db(p.mid));
         self.treble.set(FilterKind::HighShelf, sr, 3200.0, 0.7, knob_db(p.treble));
         self.presence.set(FilterKind::HighShelf, sr, 5500.0, 0.7, knob_db(p.presence) * 0.7);
     }
@@ -358,16 +451,20 @@ impl Amp {
     }
     #[inline]
     fn process(&mut self, x: f32, p: &Values) -> f32 {
-        let m = Self::model(p);
+        let m = &MODELS[Self::index(p)];
         let g = self.gain.next(0.5 + p.amp_gain / 10.0 * m.gain_max);
-        let mut y = self.pre_hp.process(x) * g;
+        // Serrage des graves, boost de médiums, puis gain
+        let mut y = self.boost.process(self.pre_hp.process(x)) * g;
         y = self.os1.process(y, |v| shape(v, m.k1, 0.03));
         if m.two_stages {
-            y = self.inter_hp.process(y);
+            y = self.inter_lp.process(self.inter_hp.process(y));
             y = self.os2.process(y * 2.0, |v| shape(v, m.k2, 0.02));
         }
         // La saturation asymétrique crée un décalage continu : on le retire avant l'égaliseur.
         y = self.dc.process(y);
+        for f in self.voice.iter_mut() {
+            y = f.process(y);
+        }
         y = self.eq(y);
         if p.cab_on > 0.5 {
             y = self.cab_dip.process(self.cab_lp2.process(self.cab_lp1.process(self.cab_hp.process(y))));
@@ -375,7 +472,6 @@ impl Amp {
         y * m.trim
     }
 }
-
 
 // ---------------------------------------------------------------- sons acoustiques
 
@@ -385,12 +481,12 @@ struct Tone {
     lp: f32,
     bands: [(FilterKind, f32, f32, f32); 4],
 }
-use FilterKind::{HighShelf, Peaking};
+use FilterKind::{HighShelf, LowShelf, Peaking};
 const TONES: [Tone; 5] = [
     // Guitare classique (nylon) : chaude, aigus doux
     Tone { hp: 80.0, lp: 6500.0, bands: [(Peaking, 100.0, 2.0, 5.0), (Peaking, 220.0, 1.2, 3.0), (Peaking, 500.0, 1.0, -2.0), (HighShelf, 4000.0, 0.7, -3.0)] },
     // Folk (cordes acier) : équilibrée, claire
-    Tone { hp: 70.0, lp: 11000.0, bands: [(Peaking, 100.0, 2.0, 4.0), (Peaking, 250.0, 1.2, 2.0), (Peaking, 400.0, 1.0, -3.0), (HighShelf, 3500.0, 0.7, 4.0)] },
+    Tone { hp: 70.0, lp: 12000.0, bands: [(Peaking, 100.0, 2.0, 5.0), (Peaking, 250.0, 1.2, 2.0), (Peaking, 400.0, 1.0, -4.0), (HighShelf, 3000.0, 0.7, 7.0)] },
     // Grosse guitare country (jumbo) : graves puissants, médiums creusés
     Tone { hp: 60.0, lp: 11000.0, bands: [(Peaking, 90.0, 1.8, 6.0), (Peaking, 180.0, 1.2, 3.0), (Peaking, 350.0, 1.0, -4.0), (HighShelf, 3000.0, 0.7, 4.0)] },
     // Ukulélé : pas de graves, résonance vers 500 Hz
@@ -454,7 +550,7 @@ impl Acoustic {
         self.env += (a - self.env) * c;
         let th = 0.12;
         let gain = if self.env > th { (th / self.env).powf(0.66) } else { 1.0 };
-        y * gain * 3.0
+        y * gain * 7.0
     }
 }
 
@@ -597,7 +693,7 @@ impl Chain {
             reverb: Reverb::new(sr),
             metro: Metronome::new(sr),
             input_s: Smooth::new(1.0, 15.0, sr),
-            master_s: Smooth::new(0.7, 15.0, sr),
+            master_s: Smooth::new(0.5, 15.0, sr),
         }
     }
 
@@ -636,7 +732,7 @@ impl Chain {
         if p.rv_on > 0.5 {
             y = self.reverb.process(y, p);
         }
-        soft_limit(y * self.master_s.next((p.master / 10.0).powi(2) * 2.8))
+        soft_limit(y * self.master_s.next((p.master / 10.0).powi(2) * 2.0))
     }
 
     #[inline]
@@ -697,6 +793,7 @@ pub fn detect_pitch(buf: &[f32], sr: f32) -> Option<f32> {
 pub const NOTE_NAMES: [&str; 12] = ["Do", "Do#", "Ré", "Ré#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
 
 /// (nom de la note, écart en cents) pour une fréquence.
+#[allow(dead_code)]
 pub fn note_info(freq: f32) -> (String, f32) {
     let midi = 69.0 + 12.0 * (freq / 440.0).log2();
     let n = midi.round();
@@ -704,6 +801,67 @@ pub fn note_info(freq: f32) -> (String, f32) {
     let idx = (n as i32).rem_euclid(12) as usize;
     let octave = (n as i32) / 12 - 1;
     (format!("{}{}", NOTE_NAMES[idx], octave), cents)
+}
+
+/// Un accordage de guitare : notes MIDI des 6 cordes, de la plus grave (6e) à la plus aiguë (1re).
+pub struct Tuning {
+    pub notes: [i32; 6],
+}
+
+/// Standard (Mi La Ré Sol Si Mi), un demi-ton plus bas (Mi♭), Drop D (Ré La Ré Sol Si Mi), Drop C.
+pub const TUNINGS: [Tuning; 4] = [
+    Tuning { notes: [40, 45, 50, 55, 59, 64] },
+    Tuning { notes: [39, 44, 49, 54, 58, 63] },
+    Tuning { notes: [38, 45, 50, 55, 59, 64] },
+    Tuning { notes: [36, 43, 48, 53, 57, 62] },
+];
+
+/// Nom français d'une note sans l'octave (40 -> « Mi »).
+pub fn note_only(midi: i32) -> &'static str {
+    NOTE_NAMES[midi.rem_euclid(12) as usize]
+}
+
+pub struct TunerReading {
+    /// Corde visée : 0 = la plus grave (6e), 5 = la plus aiguë (1re).
+    pub string: usize,
+    /// Écart en cents : négatif = trop bas (il faut serrer), positif = trop haut (il faut desserrer).
+    pub cents: f32,
+}
+
+/// Associe la fréquence jouée à une CORDE de l'accordage (la plus proche, ou celle qui est verrouillée).
+/// L'écart est toujours donné par rapport à la VRAIE hauteur de la corde visée : on voit dans quel sens
+/// tourner la mécanique, au lieu de voir défiler Sol, Sol#, La... Un La trop bas qui sonne comme un Sol
+/// reste « La trop bas » (et non « Sol juste »). Seule exception : la détection se trompe parfois en captant
+/// l'harmonique 2 (une octave trop haut) ; on l'accepte avec une pénalité de 100 cents.
+pub fn tuner_target(freq: f32, notes: &[i32; 6], locked: Option<usize>) -> TunerReading {
+    let mut best = TunerReading { string: 0, cents: f32::MAX };
+    let mut best_score = f32::MAX;
+    for (i, &n) in notes.iter().enumerate() {
+        if matches!(locked, Some(l) if l != i) {
+            continue;
+        }
+        let target = 440.0 * 2f32.powf((n as f32 - 69.0) / 12.0);
+        for (f, penalty) in [(freq, 0.0), (freq / 2.0, 100.0)] {
+            let c = 1200.0 * (f / target).log2();
+            let score = c.abs() + penalty;
+            if score < best_score {
+                best_score = score;
+                best = TunerReading { string: i, cents: c };
+            }
+        }
+    }
+    best
+}
+
+/// Consigne affichée à l'utilisateur.
+pub fn tuner_hint(cents: f32) -> String {
+    if cents.abs() <= 5.0 {
+        "✓ Accordée".to_string()
+    } else if cents < 0.0 {
+        format!("Trop bas ({:+.0}) : serre la corde", cents)
+    } else {
+        format!("Trop haut ({:+.0}) : desserre la corde", cents)
+    }
 }
 
 /// Nom d'une note MIDI, par exemple 40 -> « Mi2 ».
@@ -848,6 +1006,60 @@ mod tests {
     #[test]
     fn silence_has_no_pitch() {
         assert!(detect_pitch(&vec![0.0; 4096], SR).is_none());
+    }
+
+    #[test]
+    fn tuner_picks_the_string_and_gives_a_direction() {
+        let std = &TUNINGS[0].notes;
+        // cordes à vide justes
+        for (i, f) in [82.41f32, 110.0, 146.83, 196.0, 246.94, 329.63].iter().enumerate() {
+            let r = tuner_target(*f, std, None);
+            assert_eq!(r.string, i, "corde {i}");
+            assert!(r.cents.abs() < 2.0, "corde {i} : {}", r.cents);
+        }
+        // La trop bas (98 Hz = sol) : on reste sur la corde de La, avec l'écart dans le bon sens
+        let r = tuner_target(98.0, std, None);
+        assert_eq!(r.string, 1);
+        assert!(r.cents < -150.0 && r.cents > -250.0, "{}", r.cents);
+        // légèrement trop haut / trop bas
+        assert!(tuner_target(112.0, std, None).cents > 20.0);
+        assert!(tuner_target(108.0, std, None).cents < -20.0);
+        // détection une octave trop haut (harmonique 2) : on retombe sur la bonne corde
+        assert!(tuner_target(220.0, std, None).cents.abs() < 2.0);
+        assert_eq!(tuner_target(220.0, std, None).string, 1);
+        assert_eq!(tuner_target(164.8, std, None).string, 0); // mi grave détecté une octave trop haut
+        // le sol (98 Hz) n'est PAS pris pour la corde de sol (196 Hz) : c'est un la trop bas
+        assert_ne!(tuner_target(98.0, std, None).string, 3);
+        // on accorde la corde de sol depuis trop bas : elle reste la corde de sol
+        let r = tuner_target(185.0, std, None);
+        assert_eq!(r.string, 3);
+        assert!(r.cents < -80.0 && r.cents > -120.0);
+        // corde verrouillée
+        let r = tuner_target(110.0, std, Some(0));
+        assert_eq!(r.string, 0);
+        assert!(r.cents.abs() > 100.0);
+    }
+
+    #[test]
+    fn other_tunings_target_their_own_notes() {
+        // Drop D : la 6e corde vise Ré (73,42 Hz)
+        assert_eq!(tuner_target(73.42, &TUNINGS[2].notes, None).string, 0);
+        assert!(tuner_target(73.42, &TUNINGS[2].notes, None).cents.abs() < 2.0);
+        // Mi♭ : la 6e corde vise 77,78 Hz
+        assert!(tuner_target(77.78, &TUNINGS[1].notes, None).cents.abs() < 2.0);
+        // Drop C : 6e corde = Do (65,41 Hz)
+        assert!(tuner_target(65.41, &TUNINGS[3].notes, None).cents.abs() < 2.0);
+        assert_eq!(note_only(40), "Mi");
+        assert_eq!(note_only(38), "Ré");
+        assert_eq!(note_only(36), "Do");
+    }
+
+    #[test]
+    fn tuner_hint_says_which_way_to_turn() {
+        assert!(tuner_hint(0.0).contains("Accordée"));
+        assert!(tuner_hint(4.9).contains("Accordée"));
+        assert!(tuner_hint(-20.0).contains("serre"));
+        assert!(tuner_hint(20.0).contains("desserre"));
     }
 
     #[test]
@@ -1220,6 +1432,110 @@ mod sweep {
         let max = levels.iter().map(|x| x.1).fold(f32::MIN, f32::max);
         println!("  écart de volume entre les sons : {:.1} dB", max - min);
         assert!(max - min < 18.0, "écart de volume trop grand : {:.1} dB", max - min);
+    }
+
+    /// Énergie (dB) d'une bande de fréquences [lo, hi].
+    fn band_db(v: &[f32], sr: f32, lo: f32, hi: f32) -> f32 {
+        let mut hp = Biquad::new(FilterKind::HighPass, sr, lo, 0.7, 0.0);
+        let mut lp = Biquad::new(FilterKind::LowPass, sr, hi, 0.7, 0.0);
+        let out: Vec<f32> = v.iter().map(|&x| lp.process(hp.process(x))).collect();
+        db(rms(&out))
+    }
+
+    /// Empreinte du timbre : énergie dans 6 bandes, relative au niveau total (donc indépendante du volume).
+    fn profile(v: &[f32], sr: f32) -> [f32; 6] {
+        let edges = [(60.0, 150.0), (150.0, 400.0), (400.0, 900.0), (900.0, 2000.0), (2000.0, 4000.0), (4000.0, 8000.0)];
+        let total = db(rms(v));
+        let mut p = [0.0; 6];
+        for (i, (lo, hi)) in edges.iter().enumerate() {
+            p[i] = band_db(v, sr, *lo, *hi) - total;
+        }
+        p
+    }
+
+    fn distance(a: &[f32; 6], b: &[f32; 6]) -> f32 {
+        (a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum::<f32>() / 6.0).sqrt()
+    }
+
+    fn crest(v: &[f32]) -> f32 {
+        db(peak(v)) - db(rms(v))
+    }
+
+    #[test]
+    fn amp_models_have_distinct_tone_not_just_more_distortion() {
+        let sr = 48000.0;
+        let sig = riff(sr, 0.08);
+        let outs: Vec<Vec<f32>> = (0..4)
+            .map(|m| {
+                let p = sound_params(0.0, m as f32);
+                p.set_by_name("gate_on", 0.0);
+                render(&p, &sig, sr, None)
+            })
+            .collect();
+        let profs: Vec<[f32; 6]> = outs.iter().map(|o| profile(o, sr)).collect();
+        let crests: Vec<f32> = outs.iter().map(|o| crest(o)).collect();
+        let names = ["Clean", "Crunch", "Lead", "Metal"];
+        for i in 0..4 {
+            for j in (i + 1)..4 {
+                // timbre (6 bandes) + compression (écart crête/moyenne)
+                let d = distance(&profs[i], &profs[j]) + (crests[i] - crests[j]).abs() * 0.5;
+                println!("  écart {} / {} : {:.1} (timbre {:.1} dB, compression {:.1} dB)", names[i], names[j], d, distance(&profs[i], &profs[j]), (crests[i] - crests[j]).abs());
+                assert!(d > 3.0, "{} et {} sonnent trop pareil ({d:.1})", names[i], names[j]);
+            }
+        }
+        // Plus on sature, plus le son est comprimé (la différence crête/moyenne diminue)
+        println!("  crête/moyenne : {:?}", crests.iter().map(|c| format!("{c:.1}")).collect::<Vec<_>>());
+        assert!(crests[0] > crests[2] && crests[1] > crests[3], "la saturation doit comprimer : {crests:?}");
+        // Le Metal creuse les médiums (400-900 Hz) par rapport aux graves et aux aigus voisins, bien plus que le Crunch
+        let scoop = |p: &[f32; 6]| p[2] - (p[1] + p[4]) / 2.0;
+        println!("  creux de médiums : crunch {:.1} dB, metal {:.1} dB", scoop(&profs[1]), scoop(&profs[3]));
+        assert!(scoop(&profs[3]) < scoop(&profs[1]) - 3.0, "Metal : médiums pas creusés ({:.1} vs {:.1})", scoop(&profs[3]), scoop(&profs[1]));
+        // Le Clean est le plus pauvre en aigus de distorsion, le Metal le plus riche
+        assert!(profs[0][5] < profs[3][5], "aigus : clean {:.1} metal {:.1}", profs[0][5], profs[3][5]);
+    }
+
+    #[test]
+    fn every_factory_preset_sounds_different() {
+        let sr = 48000.0;
+        let sig = riff(sr, 0.3);
+        let presets = crate::presets::factory_presets();
+        let mut profs: Vec<(String, [f32; 6], f32)> = Vec::new();
+        for pr in &presets {
+            let p = Params::new();
+            p.load(&pr.values);
+            let out = render(&p, &sig, sr, None);
+            assert!(out.iter().all(|x| x.is_finite()), "{}", pr.name);
+            profs.push((pr.name.clone(), profile(&out, sr), crest(&out)));
+        }
+        let mut worst = (f32::MAX, String::new());
+        for i in 0..profs.len() {
+            for j in (i + 1)..profs.len() {
+                let d = distance(&profs[i].1, &profs[j].1) + (profs[i].2 - profs[j].2).abs() * 0.5;
+                if d < worst.0 {
+                    worst = (d, format!("{} / {}", profs[i].0, profs[j].0));
+                }
+                assert!(d > 1.2, "presets presque identiques : {} / {} ({d:.2})", profs[i].0, profs[j].0);
+            }
+        }
+        println!("  {} presets, les deux plus proches : {} (écart {:.1})", profs.len(), worst.1, worst.0);
+    }
+
+    #[test]
+    fn nothing_is_too_quiet_or_uneven() {
+        let sr = 48000.0;
+        let sig = riff(sr, 0.3);
+        let mut levels = Vec::new();
+        for (name, inst, model) in sounds() {
+            let p = sound_params(inst, model);
+            p.set_by_name("gate_on", 0.0);
+            let out = render(&p, &sig, sr, None);
+            let l = db(rms(&out));
+            println!("  {name:<28} {l:>6.1} dBFS");
+            assert!(l > -16.0, "{name} trop faible : {l:.1} dBFS");
+            levels.push(l);
+        }
+        let spread = levels.iter().cloned().fold(f32::MIN, f32::max) - levels.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(spread < 7.0, "volumes inégaux : {spread:.1} dB");
     }
 
     #[test]

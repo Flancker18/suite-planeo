@@ -31,6 +31,10 @@ export global S {
     in-out property <int> buffer-sel: 1;
     in-out property <bool> settings-open;
     in-out property <int> theme;
+    in-out property <int> tuning;
+    in-out property <[string]> tuner-strings;
+    in-out property <int> tuner-active: -1;
+    in-out property <int> tuner-lock: -1;
     // Thème Arc-en-ciel : `phase` avance de 0 à 6 ; chaque couleur reste vive, puis passe vite à la suivante
     in-out property <float> phase;
     property <[color]> palette: [#ff7eb6, #ff2bd6, #39e75f, #2f7bff, #ff3b3b, #ffe14a];
@@ -70,6 +74,8 @@ export global S {
     callback refresh-devices();
     callback auto-level();
     callback settings-changed();
+    callback tuning-changed();
+    callback tuner-lock-string(int);
     callback theme-changed();
     callback toggle-rec();
     callback play-recording();
@@ -115,6 +121,8 @@ component Knob inherits Rectangle {
     in property <float> value;
     in property <float> minimum: 0;
     in property <float> maximum: 10;
+    // Allumé : le contour du potard brille (effet actif)
+    in property <bool> lit: true;
     callback changed(float);
     property <float> start;
     width: 66px;
@@ -128,13 +136,15 @@ component Knob inherits Rectangle {
             border-radius: 25px;
             background: T.dark;
             border-width: 2px;
-            border-color: T.line;
+            border-color: root.lit ? T.accent : T.line;
+            drop-shadow-blur: root.lit ? 10px : 0px;
+            drop-shadow-color: root.lit ? T.accent : #00000000;
             Path {
                 width: 100%;
                 height: 100%;
                 viewbox-width: 50;
                 viewbox-height: 50;
-                stroke: T.accent;
+                stroke: root.lit ? T.accent : T.line;
                 stroke-width: 4px;
                 stroke-line-cap: round;
                 property <angle> a: -135deg + (root.value - root.minimum) / (root.maximum - root.minimum) * 270deg;
@@ -169,6 +179,8 @@ component Toggle inherits Rectangle {
     min-width: 56px;
     border-radius: 4px;
     background: root.value > 0.5 ? T.accent : T.btn;
+    drop-shadow-blur: root.value > 0.5 ? 12px : 0px;
+    drop-shadow-color: root.value > 0.5 ? T.accent : #00000000;
     Text { text: root.text; color: root.value > 0.5 ? T.on-accent : T.dim; font-size: 12px; font-weight: 700; }
     TouchArea { clicked => { root.changed(root.value > 0.5 ? 0 : 1); } }
 }
@@ -223,6 +235,8 @@ component Btn inherits Rectangle {
     min-width: 34px;
     border-radius: 4px;
     background: root.accent ? T.accent : T.btn;
+    drop-shadow-blur: root.accent ? 12px : 0px;
+    drop-shadow-color: root.accent ? T.accent : #00000000;
     Text { text: root.text; color: root.accent ? T.on-accent : T.text; font-size: 12px; font-weight: 700; }
     TouchArea { clicked => { root.clicked(); } }
 }
@@ -330,6 +344,8 @@ component TabView inherits Rectangle {
                 height: 20px;
                 border-radius: 10px;
                 background: n.state == 1 ? T.accent : T.canvas;
+                drop-shadow-blur: n.state == 1 ? 14px : 0px;
+                drop-shadow-color: n.state == 1 ? T.accent : #00000000;
                 Text {
                     text: n.fret;
                     color: n.state == 1 ? T.on-accent : (n.state == 0 ? T.line : T.text);
@@ -395,7 +411,7 @@ export component AppWindow inherits Window {
                 on-value: S.v.gate-on;
                 toggled(x) => { S.edit("gate_on", x); }
                 Knob { label: "Entrée"; value: S.v.input; changed(x) => { S.edit("input", x); } }
-                Knob { label: "Seuil"; value: S.v.gate-th; changed(x) => { S.edit("gate_th", x); } }
+                Knob { lit: S.v.gate-on > 0.5; label: "Seuil"; value: S.v.gate-th; changed(x) => { S.edit("gate_th", x); } }
                 VerticalLayout {
                     alignment: center;
                     padding-left: 4px;
@@ -407,32 +423,32 @@ export component AppWindow inherits Window {
                 opacity: S.v.inst > 0.5 ? 0.3 : 1;
                 on-value: S.v.od-on;
                 toggled(x) => { S.edit("od_on", x); }
-                Knob { label: "Drive"; value: S.v.od-drive; changed(x) => { S.edit("od_drive", x); } }
-                Knob { label: "Tone"; value: S.v.od-tone; changed(x) => { S.edit("od_tone", x); } }
-                Knob { label: "Level"; value: S.v.od-level; changed(x) => { S.edit("od_level", x); } }
+                Knob { lit: S.v.od-on > 0.5; label: "Drive"; value: S.v.od-drive; changed(x) => { S.edit("od_drive", x); } }
+                Knob { lit: S.v.od-on > 0.5; label: "Tone"; value: S.v.od-tone; changed(x) => { S.edit("od_tone", x); } }
+                Knob { lit: S.v.od-on > 0.5; label: "Level"; value: S.v.od-level; changed(x) => { S.edit("od_level", x); } }
             }
             Panel {
                 title: "CHORUS";
                 on-value: S.v.ch-on;
                 toggled(x) => { S.edit("ch_on", x); }
-                Knob { label: "Vitesse"; value: S.v.ch-rate; changed(x) => { S.edit("ch_rate", x); } }
-                Knob { label: "Profond."; value: S.v.ch-depth; changed(x) => { S.edit("ch_depth", x); } }
-                Knob { label: "Mix"; value: S.v.ch-mix; changed(x) => { S.edit("ch_mix", x); } }
+                Knob { lit: S.v.ch-on > 0.5; label: "Vitesse"; value: S.v.ch-rate; changed(x) => { S.edit("ch_rate", x); } }
+                Knob { lit: S.v.ch-on > 0.5; label: "Profond."; value: S.v.ch-depth; changed(x) => { S.edit("ch_depth", x); } }
+                Knob { lit: S.v.ch-on > 0.5; label: "Mix"; value: S.v.ch-mix; changed(x) => { S.edit("ch_mix", x); } }
             }
             Panel {
                 title: "DELAY";
                 on-value: S.v.dl-on;
                 toggled(x) => { S.edit("dl_on", x); }
-                Knob { label: "Temps"; value: S.v.dl-time; changed(x) => { S.edit("dl_time", x); } }
-                Knob { label: "Répét."; value: S.v.dl-fb; changed(x) => { S.edit("dl_fb", x); } }
-                Knob { label: "Mix"; value: S.v.dl-mix; changed(x) => { S.edit("dl_mix", x); } }
+                Knob { lit: S.v.dl-on > 0.5; label: "Temps"; value: S.v.dl-time; changed(x) => { S.edit("dl_time", x); } }
+                Knob { lit: S.v.dl-on > 0.5; label: "Répét."; value: S.v.dl-fb; changed(x) => { S.edit("dl_fb", x); } }
+                Knob { lit: S.v.dl-on > 0.5; label: "Mix"; value: S.v.dl-mix; changed(x) => { S.edit("dl_mix", x); } }
             }
             Panel {
                 title: "REVERB";
                 on-value: S.v.rv-on;
                 toggled(x) => { S.edit("rv_on", x); }
-                Knob { label: "Taille"; value: S.v.rv-size; changed(x) => { S.edit("rv_size", x); } }
-                Knob { label: "Mix"; value: S.v.rv-mix; changed(x) => { S.edit("rv_mix", x); } }
+                Knob { lit: S.v.rv-on > 0.5; label: "Taille"; value: S.v.rv-size; changed(x) => { S.edit("rv_size", x); } }
+                Knob { lit: S.v.rv-on > 0.5; label: "Mix"; value: S.v.rv-mix; changed(x) => { S.edit("rv_mix", x); } }
             }
         }
 
@@ -448,6 +464,8 @@ export component AppWindow inherits Window {
                     horizontal-stretch: 1;
                     border-radius: 4px;
                     background: Math.round(S.v.inst) == i ? T.accent : T.btn;
+                    drop-shadow-blur: Math.round(S.v.inst) == i ? 12px : 0px;
+                    drop-shadow-color: Math.round(S.v.inst) == i ? T.accent : #00000000;
                     Text { text: name; color: Math.round(S.v.inst) == i ? T.on-accent : T.dim; font-weight: 700; font-size: 12px; }
                     TouchArea { clicked => { S.edit("inst", i); } }
                 }
@@ -467,6 +485,8 @@ export component AppWindow inherits Window {
                         width: 80px;
                         border-radius: 4px;
                         background: Math.round(S.v.amp-model) == i ? T.accent : T.btn;
+                        drop-shadow-blur: Math.round(S.v.amp-model) == i ? 12px : 0px;
+                        drop-shadow-color: Math.round(S.v.amp-model) == i ? T.accent : #00000000;
                         Text { text: name; color: Math.round(S.v.amp-model) == i ? T.on-accent : T.dim; font-weight: 700; }
                         TouchArea { clicked => { S.edit("amp_model", i); } }
                     }
@@ -495,10 +515,36 @@ export component AppWindow inherits Window {
                 toggled(x) => { S.edit("tuner_on", x); }
                 VerticalLayout {
                     spacing: 4px;
-                    width: 200px;
-                    Text { text: S.note; color: abs(S.cents) < 5 && S.note != "--" ? #7ccf5b : T.text; font-size: 34px; font-weight: 800; horizontal-alignment: center; }
+                    width: 225px;
+                    ComboBox {
+                        model: ["Standard (Mi La Ré Sol Si Mi)", "Demi-ton plus bas (Mi♭)", "Drop D (Ré La Ré Sol Si Mi)", "Drop C (Do Sol Do Fa La Ré)"];
+                        current-index <=> S.tuning;
+                        selected(i) => { S.tuning-changed(); }
+                    }
+                    HorizontalLayout {
+                        spacing: 3px;
+                        for name[i] in S.tuner-strings: Rectangle {
+                            height: 24px;
+                            border-radius: 4px;
+                            horizontal-stretch: 1;
+                            background: S.tuner-active == i ? T.accent : T.btn;
+                            border-width: S.tuner-lock == i ? 2px : 0px;
+                            border-color: T.text;
+                            drop-shadow-blur: S.tuner-active == i ? 12px : 0px;
+                            drop-shadow-color: S.tuner-active == i ? T.accent : #00000000;
+                            Text { text: name; color: S.tuner-active == i ? T.on-accent : T.dim; font-size: 12px; font-weight: 700; }
+                            TouchArea { clicked => { S.tuner-lock-string(i); } }
+                        }
+                    }
+                    Text {
+                        text: S.note;
+                        color: abs(S.cents) < 5 && S.note != "--" ? #7ccf5b : T.text;
+                        font-size: 24px;
+                        font-weight: 800;
+                        horizontal-alignment: center;
+                    }
                     Rectangle {
-                        height: 16px;
+                        height: 14px;
                         background: T.dark;
                         border-radius: 3px;
                         Rectangle { x: parent.width / 2 - 1px; width: 2px; background: T.line; }
@@ -509,7 +555,7 @@ export component AppWindow inherits Window {
                             background: abs(S.cents) < 5 ? #7ccf5b : T.accent;
                         }
                     }
-                    Text { text: S.hz; color: T.faint; horizontal-alignment: center; font-size: 11px; }
+                    Text { text: S.hz; color: T.dim; horizontal-alignment: center; font-size: 11px; wrap: word-wrap; }
                 }
             }
             Panel {
@@ -521,8 +567,8 @@ export component AppWindow inherits Window {
                     HorizontalLayout {
                         alignment: start;
                         spacing: 2px;
-                        Knob { label: "BPM"; minimum: 40; maximum: 220; value: S.v.metro-bpm; changed(x) => { S.edit("metro_bpm", Math.round(x)); } }
-                        Knob { label: "Volume"; value: S.v.metro-vol; changed(x) => { S.edit("metro_vol", x); } }
+                        Knob { lit: S.v.metro-on > 0.5; label: "BPM"; minimum: 40; maximum: 220; value: S.v.metro-bpm; changed(x) => { S.edit("metro_bpm", Math.round(x)); } }
+                        Knob { lit: S.v.metro-on > 0.5; label: "Volume"; value: S.v.metro-vol; changed(x) => { S.edit("metro_vol", x); } }
                     }
                     HorizontalLayout {
                         spacing: 6px;
@@ -531,6 +577,8 @@ export component AppWindow inherits Window {
                             height: 16px;
                             border-radius: 8px;
                             background: S.beat == i && S.v.metro-on > 0.5 ? (i == 0 ? T.accent : #7ccf5b) : T.dark;
+                            drop-shadow-blur: S.beat == i && S.v.metro-on > 0.5 ? 10px : 0px;
+                            drop-shadow-color: S.beat == i && S.v.metro-on > 0.5 ? (i == 0 ? T.accent : #7ccf5b) : #00000000;
                         }
                     }
                 }

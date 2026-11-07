@@ -1,52 +1,21 @@
 mod audio;
 mod dsp;
 mod params;
+mod presets;
 mod tab;
 
 use audio::{Engine, Recorder, Shared};
+use presets::{factory_presets, Preset};
 use serde::{Deserialize, Serialize};
 use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 slint::include_modules!();
-
-#[derive(Clone, Serialize, Deserialize)]
-struct Preset {
-    name: String,
-    values: BTreeMap<String, f32>,
-}
-
-/// Presets d'usine, du jazz à Gojira. Les valeurs non citées gardent leur défaut.
-fn factory_presets() -> Vec<Preset> {
-    let base = params::Params::new().snapshot();
-    let mk = |name: &str, v: &[(&str, f32)]| {
-        let mut values = base.clone();
-        for (k, x) in v {
-            values.insert(k.to_string(), *x);
-        }
-        Preset { name: name.to_string(), values }
-    };
-    // amp_model : 0 Clean, 1 Crunch, 2 Lead, 3 Metal
-    vec![
-        mk("Jazz (clean chaud)", &[("amp_model", 0.0), ("amp_gain", 3.0), ("bass", 6.5), ("mid", 5.0), ("treble", 3.0), ("presence", 3.0), ("rv_on", 1.0), ("rv_size", 4.0), ("rv_mix", 2.5), ("gate_on", 0.0)]),
-        mk("Country (clean brillant)", &[("amp_model", 0.0), ("amp_gain", 4.0), ("bass", 4.0), ("mid", 6.0), ("treble", 7.5), ("presence", 6.0), ("dl_on", 1.0), ("dl_time", 1.0), ("dl_fb", 1.0), ("dl_mix", 2.5), ("gate_on", 0.0)]),
-        mk("Dire Straits (clean/crunch)", &[("amp_model", 0.0), ("amp_gain", 6.5), ("bass", 4.5), ("mid", 6.0), ("treble", 7.0), ("presence", 6.5), ("ch_on", 1.0), ("ch_mix", 2.0), ("ch_rate", 2.0), ("rv_on", 1.0), ("rv_mix", 2.0)]),
-        mk("Blues (crunch léger)", &[("amp_model", 1.0), ("amp_gain", 4.0), ("bass", 5.0), ("mid", 6.5), ("treble", 5.5), ("presence", 4.5), ("od_on", 1.0), ("od_drive", 3.0), ("od_tone", 5.0), ("od_level", 6.0), ("rv_on", 1.0), ("rv_mix", 2.5)]),
-        mk("Rock (crunch)", &[("amp_model", 1.0), ("amp_gain", 7.0), ("bass", 5.5), ("mid", 6.0), ("treble", 6.0), ("presence", 5.5), ("dl_on", 1.0), ("dl_time", 3.5), ("dl_mix", 2.0)]),
-        mk("Solo (lead)", &[("amp_model", 2.0), ("amp_gain", 6.5), ("bass", 4.5), ("mid", 7.0), ("treble", 5.5), ("presence", 5.5), ("dl_on", 1.0), ("dl_time", 4.0), ("dl_fb", 3.5), ("dl_mix", 3.0), ("rv_on", 1.0), ("rv_mix", 3.0)]),
-        mk("Folk acoustique", &[("inst", 2.0), ("body", 5.0), ("treble", 5.5), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 3.0), ("rv_mix", 2.0)]),
-        mk("Classique (nylon)", &[("inst", 1.0), ("body", 5.5), ("treble", 4.5), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 4.0), ("rv_mix", 2.5)]),
-        mk("Country jumbo", &[("inst", 3.0), ("body", 6.0), ("bass", 6.0), ("treble", 6.0), ("gate_on", 0.0), ("dl_on", 1.0), ("dl_time", 1.0), ("dl_fb", 1.0), ("dl_mix", 2.0)]),
-        mk("Ukulélé", &[("inst", 4.0), ("body", 5.0), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 2.0), ("rv_mix", 1.5)]),
-        mk("Banjo bluegrass", &[("inst", 5.0), ("body", 5.0), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 2.0), ("rv_mix", 1.5)]),
-        mk("Gojira (metal)", &[("amp_model", 3.0), ("amp_gain", 6.5), ("bass", 6.0), ("mid", 3.5), ("treble", 6.5), ("presence", 6.0), ("od_on", 1.0), ("od_drive", 1.0), ("od_tone", 6.5), ("od_level", 8.0), ("gate_on", 1.0), ("gate_th", 5.0)]),
-    ]
-}
 
 fn presets_path() -> Option<std::path::PathBuf> {
     dirs::config_dir().map(|d| d.join("guitar-amp").join("presets.json"))
@@ -75,6 +44,7 @@ struct Settings {
     output2: Option<String>,
     buffer: Option<u32>,
     theme: Option<i32>,
+    tuning: Option<i32>,
 }
 
 fn load_settings() -> Settings {
@@ -215,6 +185,12 @@ fn rescan_devices(st: &mut State, g: &S) -> bool {
     true
 }
 
+/// Les 6 boutons de corde du tuner, de la 6e (grave) à la 1re (aiguë), pour l'accordage choisi.
+fn tuner_labels(tuning: i32) -> ModelRc<SharedString> {
+    let t = &dsp::TUNINGS[(tuning.max(0) as usize).min(dsp::TUNINGS.len() - 1)];
+    ModelRc::new(VecModel::from(t.notes.iter().map(|&n| SharedString::from(dsp::note_only(n))).collect::<Vec<_>>()))
+}
+
 fn preset_names(st: &State) -> ModelRc<SharedString> {
     let names: Vec<SharedString> = st.factory.iter().chain(st.user.iter()).map(|p| SharedString::from(p.name.as_str())).collect();
     ModelRc::new(VecModel::from(names))
@@ -329,6 +305,9 @@ fn main() -> Result<(), slint::PlatformError> {
     g.set_out_sel(find(&saved.output, &outs).unwrap_or(0));
     g.set_out2_sel(find(&saved.output2, &outs).unwrap_or(0));
     g.set_theme(saved.theme.unwrap_or(0));
+    g.set_tuning(saved.tuning.unwrap_or(0));
+    g.set_tuner_strings(tuner_labels(saved.tuning.unwrap_or(0)));
+    g.set_hz("Joue une corde à vide".into());
     g.set_buffer_sel(BUFFERS.iter().position(|&b| Some(b) == saved.buffer).unwrap_or(1) as i32);
     g.set_v(shared.params.to_ui());
 
@@ -383,6 +362,28 @@ fn main() -> Result<(), slint::PlatformError> {
         g.on_theme_changed(move || {
             let t = weak.upgrade().unwrap().global::<S>().get_theme();
             update_settings(|s| s.theme = Some(t));
+        });
+    }
+
+    // Accordage (standard, demi-ton plus bas, drop D, drop C) : mémorisé ; clic sur une corde = la verrouiller
+    {
+        let weak = ui.as_weak();
+        g.on_tuning_changed(move || {
+            let ui = weak.upgrade().unwrap();
+            let g = ui.global::<S>();
+            let t = g.get_tuning();
+            g.set_tuner_strings(tuner_labels(t));
+            g.set_tuner_lock(-1);
+            g.set_tuner_active(-1);
+            update_settings(|s| s.tuning = Some(t));
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        g.on_tuner_lock_string(move |i| {
+            let g = weak.upgrade().unwrap();
+            let g = g.global::<S>();
+            g.set_tuner_lock(if g.get_tuner_lock() == i { -1 } else { i });
         });
     }
 
@@ -694,7 +695,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     if peak < 0.001 {
                         g.set_status("Auto-niveau : aucun signal. Vérifie le câble, l'entrée choisie dans Paramètres et le niveau du micro dans Windows.".into());
                     } else {
-                        let db = 20.0 * (0.4 / peak).log10();
+                        let db = 20.0 * (0.5 / peak).log10();
                         sh.params.input.set(dsp::input_knob_for_db(db));
                         g.set_v(sh.params.to_ui());
                         let warn = if db > 36.0 { " — signal très faible : monte aussi le niveau du micro dans Windows" } else { "" };
@@ -736,7 +737,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 st.det_stable = 0;
                 g.set_note("--".into());
                 g.set_cents(0.0);
-                g.set_hz("".into());
+                g.set_tuner_active(-1);
+                g.set_hz("Accordeur éteint".into());
             }
             if st.tick % 2 == 0 && (tuner_on || st.tab_wait) {
                 if let (Some(sr), true) = (st.engine.as_ref().map(|e| e.sample_rate), st.tuner.len() == 4096) {
@@ -754,10 +756,14 @@ fn main() -> Result<(), slint::PlatformError> {
                             let d = st.detected;
                             st.follower.heard(d);
                             st.hz = if st.hz > 0.0 && (st.hz / hz - 1.0).abs() < 0.05 { st.hz * 0.6 + hz * 0.4 } else { hz };
-                            let (note, cents) = dsp::note_info(st.hz);
-                            g.set_note(note.into());
-                            g.set_cents(cents);
-                            g.set_hz(format!("{:.1} Hz  ({:+.0} cents)", st.hz, cents).into());
+                            // On vise une corde précise de l'accordage : on voit dans quel sens tourner
+                            let tuning = (g.get_tuning().max(0) as usize).min(dsp::TUNINGS.len() - 1);
+                            let lock = if g.get_tuner_lock() >= 0 { Some(g.get_tuner_lock() as usize) } else { None };
+                            let r = dsp::tuner_target(st.hz, &dsp::TUNINGS[tuning].notes, lock);
+                            g.set_note(dsp::note_only(dsp::TUNINGS[tuning].notes[r.string]).into());
+                            g.set_cents(r.cents);
+                            g.set_tuner_active(r.string as i32);
+                            g.set_hz(dsp::tuner_hint(r.cents).into());
                         }
                         None => {
                             st.detected = None;
@@ -768,7 +774,8 @@ fn main() -> Result<(), slint::PlatformError> {
                                 st.hz = 0.0;
                                 g.set_note("--".into());
                                 g.set_cents(0.0);
-                                g.set_hz("".into());
+                                g.set_tuner_active(-1);
+                                g.set_hz("Joue une corde à vide".into());
                             }
                         }
                     }
