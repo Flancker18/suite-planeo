@@ -7,6 +7,12 @@ accordeur, métronome, enregistrement WAV et presets (jazz, country, Dire Strait
 - Interface : `slint`
 - DSP : `src/dsp.rs` (Rust pur, testé avec `cargo test`)
 
+## Tablatures
+
+Bouton **« Ouvrir une tablature… »** (en bas) : fichiers Guitar Pro `.gp3 .gp4 .gp5 .gpx .gp`. La tablature défile au tempo du morceau,
+avec choix de la piste, pause, saut de mesure et vitesse de 20 à 150 %. Sans tablature, une façade d'ampli décorative s'affiche.
+Les signes de reprise ne sont pas dépliés (lecture linéaire).
+
 ## Lancer
 
 ```

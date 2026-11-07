@@ -11,6 +11,8 @@ export struct Vals {
     mute: float, metro-on: float, metro-bpm: float, metro-vol: float,
 }
 
+export struct TabItem { x: float, string: int, fret: string, state: int }
+
 export global S {
     in-out property <Vals> v;
     in-out property <float> in-level;
@@ -30,6 +32,24 @@ export global S {
     in-out property <int> preset-sel: -1;
     in-out property <bool> running;
     in-out property <bool> recording;
+    // tablature
+    in-out property <bool> tab-shown;
+    in-out property <bool> tab-playing;
+    in-out property <string> tab-title;
+    in-out property <string> tab-measure;
+    in-out property <[string]> tab-tracks;
+    in-out property <int> tab-track-sel;
+    in-out property <int> tab-strings: 6;
+    in-out property <[TabItem]> tab-notes;
+    in-out property <[float]> tab-bars;
+    in-out property <float> tab-speed: 100;
+    callback tab-load();
+    callback tab-close();
+    callback tab-toggle-play();
+    callback tab-restart();
+    callback tab-step(int);
+    callback tab-pick-track(int);
+    callback tab-set-speed(float);
     callback edit(string, float);
     callback start();
     callback stop();
@@ -145,13 +165,115 @@ component Meter inherits Rectangle {
     }
 }
 
+
+component Btn inherits Rectangle {
+    in property <string> text;
+    in property <bool> accent;
+    callback clicked();
+    height: 26px;
+    min-width: 34px;
+    border-radius: 4px;
+    background: root.accent ? #ff9a3c : #3a322b;
+    Text { text: root.text; color: root.accent ? #1b1612 : #f2e6d0; font-size: 12px; font-weight: 700; }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+// Façade d'ampli : tissu de la grille, liseré, plaque au nom de l'appli.
+component AmpGrille inherits Rectangle {
+    background: #1d1814;
+    border-radius: 10px;
+    border-width: 4px;
+    border-color: #0e0b09;
+    clip: true;
+    for i in 260: Rectangle { x: i * 6px; width: 1px; background: #2a221c; }
+    for j in 80: Rectangle { y: j * 6px; height: 1px; background: #2a221c; }
+    Rectangle { x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px; border-radius: 6px; border-width: 2px; border-color: #7a5a2e; }
+    Rectangle {
+        width: 240px;
+        height: 46px;
+        background: #14110f;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: #ff9a3c;
+        Text { text: "GUITAR AMP"; color: #ff9a3c; font-size: 22px; font-weight: 800; }
+    }
+    Btn {
+        width: 190px;
+        x: parent.width - self.width - 22px;
+        y: parent.height - self.height - 18px;
+        text: "♪ Ouvrir une tablature…";
+        clicked => { S.tab-load(); }
+    }
+}
+
+component TabView inherits Rectangle {
+    background: #211c18;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #3d332b;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 6px;
+            height: 28px;
+            Text { text: S.tab-title; color: #ffb866; font-size: 14px; font-weight: 700; vertical-alignment: center; overflow: elide; max-width: 320px; }
+            ComboBox { model: S.tab-tracks; current-index <=> S.tab-track-sel; selected(i) => { S.tab-pick-track(S.tab-track-sel); } }
+            Btn { text: S.tab-playing ? "⏸ Pause" : "▶ Lecture"; accent: !S.tab-playing; min-width: 84px; clicked => { S.tab-toggle-play(); } }
+            Btn { text: "⏮"; clicked => { S.tab-restart(); } }
+            Btn { text: "◀"; clicked => { S.tab-step(-1); } }
+            Text { text: S.tab-measure; color: #b9a88f; vertical-alignment: center; min-width: 90px; horizontal-alignment: center; }
+            Btn { text: "▶"; clicked => { S.tab-step(1); } }
+            Rectangle { }
+            Text { text: "Vitesse"; color: #b9a88f; vertical-alignment: center; }
+            Btn { text: "−"; clicked => { S.tab-set-speed(S.tab-speed - 10); } }
+            Text { text: Math.round(S.tab-speed) + " %"; color: #f2e6d0; vertical-alignment: center; min-width: 44px; horizontal-alignment: center; }
+            Btn { text: "+"; clicked => { S.tab-set-speed(S.tab-speed + 10); } }
+            Btn { text: "Ouvrir…"; clicked => { S.tab-load(); } }
+            Btn { text: "Fermer"; clicked => { S.tab-close(); } }
+        }
+        Rectangle {
+            background: #17130f;
+            border-radius: 6px;
+            clip: true;
+            for s in S.tab-strings: Rectangle {
+                y: parent.height / (S.tab-strings + 1) * (s + 1);
+                height: 1px;
+                background: #6b5a48;
+            }
+            for bx in S.tab-bars: Rectangle {
+                x: parent.width * bx;
+                y: parent.height / (S.tab-strings + 1) * 0.7;
+                width: 2px;
+                height: parent.height / (S.tab-strings + 1) * (S.tab-strings - 1 + 0.6);
+                background: #8f7f6a;
+            }
+            Rectangle { x: parent.width * 0.125 - 1px; width: 2px; background: #ff9a3c; }
+            for n in S.tab-notes: Rectangle {
+                x: parent.width * n.x - 10px;
+                y: parent.height / (S.tab-strings + 1) * (n.string + 1) - 10px;
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: n.state == 1 ? #ff9a3c : #17130f;
+                Text {
+                    text: n.fret;
+                    color: n.state == 1 ? #1b1612 : (n.state == 0 ? #6b5a48 : #f2e6d0);
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+            }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Guitar Amp";
     icon: @image-url("../assets/icon.png");
     preferred-width: 1100px;
-    preferred-height: 840px;
-    min-width: 1000px;
-    min-height: 780px;
+    preferred-height: 920px;
+    min-width: 1050px;
+    min-height: 800px;
     background: #14110f;
 
     VerticalLayout {
@@ -212,6 +334,21 @@ export component AppWindow inherits Window {
                 Knob { label: "Profond."; value: S.v.ch-depth; changed(x) => { S.edit("ch_depth", x); } }
                 Knob { label: "Mix"; value: S.v.ch-mix; changed(x) => { S.edit("ch_mix", x); } }
             }
+            Panel {
+                title: "DELAY";
+                on-value: S.v.dl-on;
+                toggled(x) => { S.edit("dl_on", x); }
+                Knob { label: "Temps"; value: S.v.dl-time; changed(x) => { S.edit("dl_time", x); } }
+                Knob { label: "Répét."; value: S.v.dl-fb; changed(x) => { S.edit("dl_fb", x); } }
+                Knob { label: "Mix"; value: S.v.dl-mix; changed(x) => { S.edit("dl_mix", x); } }
+            }
+            Panel {
+                title: "REVERB";
+                on-value: S.v.rv-on;
+                toggled(x) => { S.edit("rv_on", x); }
+                Knob { label: "Taille"; value: S.v.rv-size; changed(x) => { S.edit("rv_size", x); } }
+                Knob { label: "Mix"; value: S.v.rv-mix; changed(x) => { S.edit("rv_mix", x); } }
+            }
         }
 
         // --- Instrument
@@ -261,26 +398,6 @@ export component AppWindow inherits Window {
                     padding-left: 10px;
                     Toggle { text: "BAFFLE"; value: S.v.cab-on; changed(x) => { S.edit("cab_on", x); } }
                 }
-            }
-        }
-
-        // --- Delay / Reverb
-        HorizontalLayout {
-            spacing: 10px;
-            Panel {
-                title: "DELAY";
-                on-value: S.v.dl-on;
-                toggled(x) => { S.edit("dl_on", x); }
-                Knob { label: "Temps"; value: S.v.dl-time; changed(x) => { S.edit("dl_time", x); } }
-                Knob { label: "Répét."; value: S.v.dl-fb; changed(x) => { S.edit("dl_fb", x); } }
-                Knob { label: "Mix"; value: S.v.dl-mix; changed(x) => { S.edit("dl_mix", x); } }
-            }
-            Panel {
-                title: "REVERB";
-                on-value: S.v.rv-on;
-                toggled(x) => { S.edit("rv_on", x); }
-                Knob { label: "Taille"; value: S.v.rv-size; changed(x) => { S.edit("rv_size", x); } }
-                Knob { label: "Mix"; value: S.v.rv-mix; changed(x) => { S.edit("rv_mix", x); } }
             }
         }
 
@@ -373,6 +490,14 @@ export component AppWindow inherits Window {
                     }
                 }
             }
+        }
+
+        // --- Grille d'ampli (décor) ou lecteur de tablature
+        Rectangle {
+            vertical-stretch: 1;
+            min-height: 150px;
+            if !S.tab-shown: AmpGrille { }
+            if S.tab-shown: TabView { }
         }
     }
 }

@@ -1,6 +1,7 @@
 mod audio;
 mod dsp;
 mod params;
+mod tab;
 
 use audio::{Engine, Recorder, Shared};
 use serde::{Deserialize, Serialize};
@@ -82,6 +83,12 @@ fn save_rec_dir(dir: &std::path::Path) {
 }
 
 struct State {
+    tab: Option<Rc<tab::TabSong>>,
+    tab_track: usize,
+    tab_pos: f32,
+    tab_playing: bool,
+    tab_speed: f32,
+    last_tick: Instant,
     rec_dir: std::path::PathBuf,
     engine: Option<Engine>,
     recorder: Option<Recorder>,
@@ -103,6 +110,70 @@ fn preset_names(st: &State) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(names))
 }
 
+
+const TAB_BEFORE: f32 = 1.5; // noires visibles avant la tête de lecture
+const TAB_SPAN: f32 = 12.0; // noires visibles au total
+
+fn show_track(st: &State, g: &S) {
+    if let Some(song) = &st.tab {
+        g.set_tab_strings(song.tracks[st.tab_track].strings as i32);
+    }
+}
+
+
+fn open_tab(path: &std::path::Path, st: &Rc<RefCell<State>>, g: &S) {
+    match tab::load(path) {
+        Ok(song) => {
+            let mut st = st.borrow_mut();
+            let names: Vec<SharedString> = song.tracks.iter().map(|t| SharedString::from(t.name.as_str())).collect();
+            g.set_tab_tracks(ModelRc::new(VecModel::from(names)));
+            g.set_tab_title(song.title.as_str().into());
+            g.set_tab_track_sel(0);
+            g.set_tab_playing(false);
+            g.set_tab_shown(true);
+            st.tab = Some(Rc::new(song));
+            st.tab_track = 0;
+            st.tab_pos = 0.0;
+            st.tab_playing = false;
+            show_track(&st, g);
+        }
+        Err(e) => g.set_status(format!("Tablature : {e}").into()),
+    }
+}
+
+/// Fait avancer la tablature et prépare ce qui est affiché.
+fn update_tab(st: &mut State, g: &S, dt: f32) {
+    let Some(song) = st.tab.clone() else { return };
+    let track = &song.tracks[st.tab_track];
+    if st.tab_playing {
+        let tempo = track.bars[track.bar_index(st.tab_pos)].1;
+        st.tab_pos += dt * tempo * st.tab_speed / 100.0 / 60.0;
+        if st.tab_pos >= track.total {
+            st.tab_pos = track.total;
+            st.tab_playing = false;
+            g.set_tab_playing(false);
+        }
+    }
+    let pos = st.tab_pos;
+    let lo = pos - TAB_BEFORE;
+    let hi = lo + TAB_SPAN;
+    let a = track.notes.partition_point(|n| n.pos < lo - 0.01);
+    let b = track.notes.partition_point(|n| n.pos <= hi);
+    let items: Vec<TabItem> = track.notes[a..b]
+        .iter()
+        .map(|n| TabItem {
+            x: (n.pos - lo) / TAB_SPAN,
+            string: n.string,
+            fret: n.fret.as_str().into(),
+            state: if n.pos + 0.3 < pos { 0 } else if n.pos <= pos { 1 } else { 2 },
+        })
+        .collect();
+    g.set_tab_notes(ModelRc::new(VecModel::from(items)));
+    let bars: Vec<f32> = track.bars.iter().map(|b| (b.0 - lo) / TAB_SPAN).filter(|x| (-0.05..=1.05).contains(x)).collect();
+    g.set_tab_bars(ModelRc::new(VecModel::from(bars)));
+    g.set_tab_measure(format!("Mesure {} / {}", track.bar_index(pos) + 1, track.bars.len()).into());
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     let ui = AppWindow::new()?;
     let shared = Arc::new(Shared::new());
@@ -119,6 +190,12 @@ fn main() -> Result<(), slint::PlatformError> {
     g.set_v(shared.params.to_ui());
 
     let state = Rc::new(RefCell::new(State {
+        tab: None,
+        tab_track: 0,
+        tab_pos: 0.0,
+        tab_playing: false,
+        tab_speed: 100.0,
+        last_tick: Instant::now(),
         rec_dir: load_rec_dir(),
         engine: None,
         recorder: None,
@@ -231,6 +308,82 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
+    // Tablature : ouvrir un fichier Guitar Pro (bouton, ou fichier passé en argument au lancement)
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_tab_load(move || {
+            let Some(path) = rfd::FileDialog::new()
+                .set_title("Ouvrir une tablature Guitar Pro")
+                .add_filter("Guitar Pro", &["gp3", "gp4", "gp5", "gpx", "gp"])
+                .pick_file()
+            else {
+                return;
+            };
+            open_tab(&path, &st, &weak.upgrade().unwrap().global::<S>());
+        });
+    }
+    if let Some(arg) = std::env::args().nth(1).filter(|a| !a.is_empty()) {
+        open_tab(std::path::Path::new(&arg), &state, &g);
+    }
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_tab_close(move || {
+            let mut st = st.borrow_mut();
+            st.tab = None;
+            st.tab_playing = false;
+            let g = weak.upgrade().unwrap();
+            let g = g.global::<S>();
+            g.set_tab_playing(false);
+            g.set_tab_shown(false);
+        });
+    }
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_tab_toggle_play(move || {
+            let mut st = st.borrow_mut();
+            let Some(song) = st.tab.clone() else { return };
+            if st.tab_pos >= song.tracks[st.tab_track].total {
+                st.tab_pos = 0.0;
+            }
+            st.tab_playing = !st.tab_playing;
+            st.last_tick = Instant::now();
+            weak.upgrade().unwrap().global::<S>().set_tab_playing(st.tab_playing);
+        });
+    }
+    {
+        let st = state.clone();
+        g.on_tab_restart(move || st.borrow_mut().tab_pos = 0.0);
+    }
+    {
+        let st = state.clone();
+        g.on_tab_step(move |d| {
+            let mut st = st.borrow_mut();
+            let Some(song) = st.tab.clone() else { return };
+            let t = &song.tracks[st.tab_track];
+            let i = (t.bar_index(st.tab_pos) as i32 + d).clamp(0, t.bars.len() as i32 - 1) as usize;
+            st.tab_pos = t.bars[i].0;
+        });
+    }
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_tab_pick_track(move |i| {
+            let mut st = st.borrow_mut();
+            let n = st.tab.as_ref().map(|t| t.tracks.len()).unwrap_or(0);
+            if n > 0 {
+                st.tab_track = (i.max(0) as usize).min(n - 1);
+                show_track(&st, &weak.upgrade().unwrap().global::<S>());
+            }
+        });
+    }
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_tab_set_speed(move |v| {
+            let v = v.clamp(20.0, 150.0);
+            st.borrow_mut().tab_speed = v;
+            weak.upgrade().unwrap().global::<S>().set_tab_speed(v);
+        });
+    }
+
     // Presets
     {
         let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
@@ -279,6 +432,10 @@ fn main() -> Result<(), slint::PlatformError> {
             let g = ui.global::<S>();
             let mut st = st.borrow_mut();
             st.tick += 1;
+            let now = Instant::now();
+            let dt = (now - st.last_tick).as_secs_f32().min(0.2);
+            st.last_tick = now;
+            update_tab(&mut st, &g, dt);
             st.in_disp = sh.in_peak.get().max(st.in_disp * 0.85);
             st.out_disp = sh.out_peak.get().max(st.out_disp * 0.85);
             g.set_in_level(st.in_disp.sqrt());
