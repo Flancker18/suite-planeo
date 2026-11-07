@@ -22,6 +22,7 @@ macro_rules! params {
         pub struct Params { $(pub $name: AtomicF32,)* }
         /// Copie « photo » des valeurs, lue une fois par bloc audio.
         #[derive(Clone, Debug)]
+        #[allow(dead_code)]
         pub struct Values { $(pub $name: f32,)* }
 
         impl Params {
@@ -32,19 +33,19 @@ macro_rules! params {
             /// Copie vers la structure Slint `Vals` (affichage des potards).
             pub fn to_ui(&self) -> crate::Vals { crate::Vals { $($name: self.$name.get(),)* } }
             pub fn read(&self) -> Values { Values { $($name: self.$name.get(),)* } }
-            /// Valeurs sauvegardables dans un preset (hors métronome et mute).
+            /// Valeurs sauvegardables dans un preset (hors métronome, mute et niveau d'entrée : ceux-ci dépendent du câble, pas du son).
             pub fn snapshot(&self) -> BTreeMap<String, f32> {
                 let mut m = BTreeMap::new();
                 $(
                     let n = stringify!($name);
-                    if !n.starts_with("metro_") && n != "mute" { m.insert(n.to_string(), self.$name.get()); }
+                    if !n.starts_with("metro_") && n != "mute" && n != "input" && n != "tuner_on" { m.insert(n.to_string(), self.$name.get()); }
                 )*
                 m
             }
             pub fn load(&self, m: &BTreeMap<String, f32>) {
                 $(
                     let n = stringify!($name);
-                    if !n.starts_with("metro_") && n != "mute" {
+                    if !n.starts_with("metro_") && n != "mute" && n != "input" && n != "tuner_on" {
                         if let Some(v) = m.get(n) { self.$name.set(*v); }
                     }
                 )*
@@ -64,5 +65,6 @@ params! {
     dl_on = 0.0, dl_time = 4.0, dl_fb = 3.0, dl_mix = 3.0,
     rv_on = 0.0, rv_size = 4.0, rv_mix = 3.0,
     mute = 0.0,
+    tuner_on = 1.0,
     metro_on = 0.0, metro_bpm = 100.0, metro_vol = 5.0,
 }

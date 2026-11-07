@@ -12,6 +12,9 @@ pub struct Shared {
     pub params: Params,
     pub in_peak: AtomicF32,
     pub out_peak: AtomicF32,
+    /// Crête maximale depuis la dernière lecture par l'interface (l'interface remet à zéro).
+    pub in_hold: AtomicF32,
+    pub out_hold: AtomicF32,
     pub beat: AtomicU32,
     pub rec_on: AtomicBool,
     pub tuner_q: ArrayQueue<f32>,
@@ -24,6 +27,8 @@ impl Shared {
             params: Params::new(),
             in_peak: AtomicF32::new(0.0),
             out_peak: AtomicF32::new(0.0),
+            in_hold: AtomicF32::new(0.0),
+            out_hold: AtomicF32::new(0.0),
             beat: AtomicU32::new(0),
             rec_on: AtomicBool::new(false),
             tuner_q: ArrayQueue::new(4096),
@@ -178,6 +183,8 @@ where
             }
             shared.in_peak.set(in_pk);
             shared.out_peak.set(out_pk);
+            shared.in_hold.set(shared.in_hold.get().max(in_pk));
+            shared.out_hold.set(shared.out_hold.get().max(out_pk));
         },
         |e| eprintln!("Erreur sortie audio : {e}"),
         None,

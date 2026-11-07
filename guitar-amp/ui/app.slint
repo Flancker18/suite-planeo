@@ -8,7 +8,7 @@ export struct Vals {
     amp-model: float, amp-gain: float, bass: float, mid: float, treble: float, presence: float, master: float, cab-on: float,
     dl-on: float, dl-time: float, dl-fb: float, dl-mix: float,
     rv-on: float, rv-size: float, rv-mix: float,
-    mute: float, metro-on: float, metro-bpm: float, metro-vol: float,
+    mute: float, tuner-on: float, metro-on: float, metro-bpm: float, metro-vol: float,
 }
 
 export struct TabItem { x: float, string: int, fret: string, state: int }
@@ -59,6 +59,7 @@ export global S {
     callback tab-set-speed(float);
     callback edit(string, float);
     callback refresh-devices();
+    callback auto-level();
     callback start();
     callback stop();
     callback toggle-rec();
@@ -349,6 +350,11 @@ export component AppWindow inherits Window {
                 toggled(x) => { S.edit("gate_on", x); }
                 Knob { label: "Entrée"; value: S.v.input; changed(x) => { S.edit("input", x); } }
                 Knob { label: "Seuil"; value: S.v.gate-th; changed(x) => { S.edit("gate_th", x); } }
+                VerticalLayout {
+                    alignment: center;
+                    padding-left: 4px;
+                    Btn { text: "AUTO"; min-width: 52px; clicked => { S.auto-level(); } }
+                }
             }
             Panel {
                 title: "OVERDRIVE";
@@ -439,6 +445,8 @@ export component AppWindow inherits Window {
             spacing: 10px;
             Panel {
                 title: "ACCORDEUR";
+                on-value: S.v.tuner-on;
+                toggled(x) => { S.edit("tuner_on", x); }
                 VerticalLayout {
                     spacing: 4px;
                     width: 200px;

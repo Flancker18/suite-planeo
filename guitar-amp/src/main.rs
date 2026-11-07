@@ -121,6 +121,7 @@ struct State {
     user: Vec<Preset>,
     tuner: VecDeque<f32>,
     tick: u32,
+    auto: Option<(Instant, f32)>,
     in_disp: f32,
     out_disp: f32,
     hz: f32,
@@ -293,6 +294,7 @@ fn main() -> Result<(), slint::PlatformError> {
         user: load_user_presets(),
         tuner: VecDeque::new(),
         tick: 0,
+        auto: None,
         in_disp: 0.0,
         out_disp: 0.0,
         hz: 0.0,
@@ -405,6 +407,23 @@ fn main() -> Result<(), slint::PlatformError> {
             if !g.get_running() {
                 rescan_devices(&mut st.borrow_mut(), &g);
             }
+        });
+    }
+
+    // Auto-niveau : mesure la crête de ta guitare pendant 3 s et règle l'entrée en conséquence
+    {
+        let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
+        g.on_auto_level(move || {
+            let ui = weak.upgrade().unwrap();
+            let g = ui.global::<S>();
+            let mut st = st.borrow_mut();
+            if st.engine.is_none() {
+                g.set_status("Auto-niveau : démarre d'abord l'audio, puis joue.".into());
+                return;
+            }
+            sh.in_hold.set(0.0);
+            st.auto = Some((Instant::now(), 0.0));
+            g.set_status("Auto-niveau : joue des accords FORT pendant 3 secondes…".into());
         });
     }
 
@@ -568,8 +587,29 @@ fn main() -> Result<(), slint::PlatformError> {
             let now = Instant::now();
             let dt = (now - st.last_tick).as_secs_f32().min(0.2);
             st.last_tick = now;
-            st.in_disp = sh.in_peak.get().max(st.in_disp * 0.85);
-            st.out_disp = sh.out_peak.get().max(st.out_disp * 0.85);
+            // Crêtes depuis le dernier rafraîchissement (rien n'est manqué entre deux images)
+            let (ih, oh) = (sh.in_hold.get(), sh.out_hold.get());
+            sh.in_hold.set(0.0);
+            sh.out_hold.set(0.0);
+            st.in_disp = ih.max(st.in_disp * 0.85);
+            st.out_disp = oh.max(st.out_disp * 0.85);
+            if let Some((t0, peak)) = st.auto {
+                let peak = peak.max(ih);
+                if t0.elapsed().as_secs_f32() >= 3.0 {
+                    st.auto = None;
+                    if peak < 0.001 {
+                        g.set_status("Auto-niveau : aucun signal. Vérifie le câble, l'entrée choisie dans Paramètres et le niveau du micro dans Windows.".into());
+                    } else {
+                        let db = 20.0 * (0.4 / peak).log10();
+                        sh.params.input.set(dsp::input_knob_for_db(db));
+                        g.set_v(sh.params.to_ui());
+                        let warn = if db > 36.0 { " — signal très faible : monte aussi le niveau du micro dans Windows" } else { "" };
+                        g.set_status(format!("Auto-niveau : signal capté à {:.1} % → entrée réglée à {:+.0} dB{}", peak * 100.0, db.clamp(-12.0, 36.0), warn).into());
+                    }
+                } else {
+                    st.auto = Some((t0, peak));
+                }
+            }
             g.set_in_level(st.in_disp.sqrt());
             g.set_out_level(st.out_disp.sqrt());
             g.set_beat(sh.beat.load(Relaxed) as i32);
@@ -585,7 +625,15 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 st.tuner.push_back(x);
             }
-            if st.tick % 2 == 0 {
+            let tuner_on = sh.params.tuner_on.get() > 0.5;
+            if !tuner_on && !st.tab_wait {
+                st.detected = None;
+                st.det_stable = 0;
+                g.set_note("--".into());
+                g.set_cents(0.0);
+                g.set_hz("".into());
+            }
+            if st.tick % 2 == 0 && (tuner_on || st.tab_wait) {
                 if let (Some(sr), true) = (st.engine.as_ref().map(|e| e.sample_rate), st.tuner.len() == 4096) {
                     let buf: Vec<f32> = st.tuner.iter().copied().collect();
                     match dsp::detect_pitch(&buf, sr as f32) {

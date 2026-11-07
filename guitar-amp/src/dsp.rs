@@ -109,6 +109,22 @@ fn knob_db(v: f32) -> f32 {
     (v - 5.0) * 2.4
 }
 
+/// Réglage d'entrée : 0 = -12 dB, 5 = neutre (0 dB), 10 = +36 dB.
+/// Un câble guitare USB donne un signal faible : il faut beaucoup de marge vers le haut.
+pub fn input_db(v: f32) -> f32 {
+    if v < 5.0 {
+        (v - 5.0) * 2.4
+    } else {
+        (v - 5.0) * 7.2
+    }
+}
+
+/// Inverse de `input_db` : position du potard pour un gain voulu en dB.
+pub fn input_knob_for_db(db: f32) -> f32 {
+    let v = if db < 0.0 { 5.0 + db / 2.4 } else { 5.0 + db / 7.2 };
+    v.clamp(0.0, 10.0)
+}
+
 /// Limiteur doux final : transparent sous 0,8, puis le son est écrasé progressivement sans jamais dépasser 1,0
 /// (protège les oreilles et la carte son quand tous les réglages sont poussés à fond).
 #[inline]
@@ -581,7 +597,7 @@ impl Chain {
             reverb: Reverb::new(sr),
             metro: Metronome::new(sr),
             input_s: Smooth::new(1.0, 15.0, sr),
-            master_s: Smooth::new(0.3, 15.0, sr),
+            master_s: Smooth::new(0.7, 15.0, sr),
         }
     }
 
@@ -595,7 +611,7 @@ impl Chain {
     /// Traite un échantillon de guitare (mono).
     #[inline]
     pub fn process(&mut self, x: f32, p: &Values) -> f32 {
-        let mut y = x * self.input_s.next(10f32.powf(knob_db(p.input) / 20.0));
+        let mut y = x * self.input_s.next(10f32.powf(input_db(p.input) / 20.0));
         let th = if p.gate_on > 0.5 { 0.002 + p.gate_th / 10.0 * 0.05 } else { 0.0 };
         y = self.gate.process(y, th);
         if p.inst > 0.5 {
@@ -620,7 +636,7 @@ impl Chain {
         if p.rv_on > 0.5 {
             y = self.reverb.process(y, p);
         }
-        soft_limit(y * self.master_s.next((p.master / 10.0).powi(2) * 1.4))
+        soft_limit(y * self.master_s.next((p.master / 10.0).powi(2) * 2.8))
     }
 
     #[inline]
@@ -633,8 +649,10 @@ impl Chain {
 
 /// Détection de hauteur par autocorrélation. Retourne la fréquence en Hz, ou None si le signal est trop faible.
 pub fn detect_pitch(buf: &[f32], sr: f32) -> Option<f32> {
-    let rms = (buf.iter().map(|v| v * v).sum::<f32>() / buf.len() as f32).sqrt();
-    if rms < 0.01 {
+    let energy: f32 = buf.iter().map(|v| v * v).sum();
+    let rms = (energy / buf.len() as f32).sqrt();
+    // Seuil bas : un câble USB donne un signal faible. Le bruit est écarté plus bas par le test de clarté.
+    if rms < 0.0012 {
         return None;
     }
     let min_lag = (sr / 1000.0) as usize;
@@ -657,6 +675,10 @@ pub fn detect_pitch(buf: &[f32], sr: f32) -> Option<f32> {
         }
     }
     if best == 0 {
+        return None;
+    }
+    // Clarté : le pic doit représenter une vraie périodicité (sinon c'est du bruit).
+    if c[best] < 0.45 * energy {
         return None;
     }
     // Préférer le plus petit pic proche du maximum : évite les erreurs d'octave.
@@ -777,6 +799,53 @@ mod tests {
     }
 
     #[test]
+    fn tuner_works_with_a_very_weak_signal_but_not_on_noise() {
+        // câble USB faible : crête 0,01 seulement
+        for &f in &[82.41f32, 110.0, 196.0, 329.63] {
+            let buf = sine(f, 4096, 0.01);
+            let got = detect_pitch(&buf, SR).expect("signal faible");
+            assert!((got - f).abs() < 1.0, "attendu {f}, obtenu {got}");
+        }
+        // bruit de fond (même niveau) : pas de note
+        let mut x = 12345u32;
+        let noise: Vec<f32> = (0..4096)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                ((x >> 8) as f32 / (1 << 24) as f32 - 0.5) * 0.02
+            })
+            .collect();
+        assert!(detect_pitch(&noise, SR).is_none());
+    }
+
+    #[test]
+    fn input_knob_mapping_roundtrips_and_has_headroom() {
+        assert_eq!(input_db(5.0), 0.0);
+        assert!((input_db(10.0) - 36.0).abs() < 1e-4);
+        assert!((input_db(0.0) + 12.0).abs() < 1e-4);
+        for db in [-12.0f32, -6.0, 0.0, 6.0, 20.0, 36.0] {
+            assert!((input_db(input_knob_for_db(db)) - db).abs() < 1e-3);
+        }
+        assert_eq!(input_knob_for_db(60.0), 10.0);
+    }
+
+    #[test]
+    fn weak_input_still_gets_a_usable_sound() {
+        // Câble faible (crête 0,03) : avec le potard d'entrée à +30 dB, Metal doit saturer à un bon volume.
+        let params = Params::new();
+        params.amp_model.set(3.0);
+        params.set_by_name("input", input_knob_for_db(30.0));
+        let p = params.read();
+        let mut chain = Chain::new(SR);
+        chain.update(&p);
+        let sig = sine(196.0, 48000, 0.03);
+        let out: Vec<f32> = sig.iter().map(|&x| chain.process(x, &p)).collect();
+        let level = (out[24000..].iter().map(|v| v * v).sum::<f32>() / 24000.0).sqrt();
+        assert!(level > 0.1, "niveau trop faible : {level}");
+    }
+
+    #[test]
     fn silence_has_no_pitch() {
         assert!(detect_pitch(&vec![0.0; 4096], SR).is_none());
     }
@@ -875,6 +944,12 @@ mod tests {
         b.load(&snap);
         assert_eq!(b.amp_gain.get(), 8.0);
         assert_eq!(b.metro_bpm.get(), 100.0);
+        // le niveau d'entrée n'est pas dans les presets : charger un preset ne doit pas dérégler le câble
+        a.input.set(9.0);
+        let c = Params::new();
+        c.input.set(7.0);
+        c.load(&a.snapshot());
+        assert_eq!(c.input.get(), 7.0);
     }
 }
 
