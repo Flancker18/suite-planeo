@@ -178,24 +178,42 @@ component Btn inherits Rectangle {
     TouchArea { clicked => { root.clicked(); } }
 }
 
-// Façade d'ampli : tissu de la grille, liseré, plaque au nom de l'appli.
+// Haut-parleur vu de face : cadre, suspension, cône et cache-poussière.
+component Speaker inherits Rectangle {
+    width: 200px;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: #0b0907;
+    border-width: 4px;
+    border-color: #4a3d31;
+    Rectangle { width: parent.width * 0.84; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #1c1713; border-width: 2px; border-color: #3a2f26; }
+    Rectangle { width: parent.width * 0.66; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #211b16; border-width: 1px; border-color: #2e261f; }
+    Rectangle { width: parent.width * 0.48; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #1c1713; border-width: 1px; border-color: #2e261f; }
+    Rectangle { width: parent.width * 0.26; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #0b0907; border-width: 3px; border-color: #4a3d31; }
+}
+
+// Façade d'ampli : deux haut-parleurs sous le tissu de la grille, liseré doré, plaque au nom de l'appli.
 component AmpGrille inherits Rectangle {
-    background: #1d1814;
+    property <length> d: min(self.height - 40px, 230px);
+    background: #2b231c;
     border-radius: 10px;
     border-width: 4px;
     border-color: #0e0b09;
     clip: true;
-    for i in 260: Rectangle { x: i * 6px; width: 1px; background: #2a221c; }
-    for j in 80: Rectangle { y: j * 6px; height: 1px; background: #2a221c; }
-    Rectangle { x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px; border-radius: 6px; border-width: 2px; border-color: #7a5a2e; }
+    Speaker { width: root.d; x: parent.width * 0.27 - self.width / 2; y: (parent.height - self.height) / 2; }
+    Speaker { width: root.d; x: parent.width * 0.73 - self.width / 2; y: (parent.height - self.height) / 2; }
+    // tissu de la grille (par-dessus les haut-parleurs, légèrement transparent)
+    for i in 260: Rectangle { x: i * 5px; width: 1px; background: #00000066; }
+    for j in 80: Rectangle { y: j * 5px; height: 1px; background: #00000066; }
+    Rectangle { x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px; border-radius: 6px; border-width: 2px; border-color: #b8893a; }
     Rectangle {
-        width: 240px;
-        height: 46px;
+        width: 200px;
+        height: 38px;
         background: #14110f;
         border-radius: 6px;
         border-width: 2px;
         border-color: #ff9a3c;
-        Text { text: "GUITAR AMP"; color: #ff9a3c; font-size: 22px; font-weight: 800; }
+        Text { text: "GUITAR AMP"; color: #ff9a3c; font-size: 18px; font-weight: 800; }
     }
     Btn {
         width: 190px;
