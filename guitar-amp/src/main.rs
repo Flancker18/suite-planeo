@@ -56,7 +56,28 @@ fn save_user_presets(list: &[Preset]) -> Result<(), String> {
     std::fs::write(path, serde_json::to_string_pretty(list).unwrap()).map_err(|e| e.to_string())
 }
 
+fn settings_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("guitar-amp").join("settings.json"))
+}
+
+/// Dossier d'enregistrement : celui choisi la dernière fois, sinon Documents\Guitar Amp.
+fn load_rec_dir() -> std::path::PathBuf {
+    let saved = settings_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v["rec_dir"].as_str().map(std::path::PathBuf::from));
+    saved.unwrap_or_else(|| dirs::document_dir().unwrap_or_else(|| ".".into()).join("Guitar Amp"))
+}
+
+fn save_rec_dir(dir: &std::path::Path) {
+    if let Some(p) = settings_path() {
+        let _ = std::fs::create_dir_all(p.parent().unwrap());
+        let _ = std::fs::write(p, serde_json::json!({ "rec_dir": dir.to_string_lossy() }).to_string());
+    }
+}
+
 struct State {
+    rec_dir: std::path::PathBuf,
     engine: Option<Engine>,
     recorder: Option<Recorder>,
     rec_start: Instant,
@@ -93,6 +114,7 @@ fn main() -> Result<(), slint::PlatformError> {
     g.set_v(shared.params.to_ui());
 
     let state = Rc::new(RefCell::new(State {
+        rec_dir: load_rec_dir(),
         engine: None,
         recorder: None,
         rec_start: Instant::now(),
@@ -108,6 +130,7 @@ fn main() -> Result<(), slint::PlatformError> {
         silent_ticks: 0,
     }));
     g.set_presets(preset_names(&state.borrow()));
+    g.set_rec_dir(format!("Dossier : {}", state.borrow().rec_dir.display()).into());
 
     // Un potard bouge : on met à jour le paramètre audio, puis l'affichage.
     {
@@ -171,7 +194,8 @@ fn main() -> Result<(), slint::PlatformError> {
                 g.set_rec_info(format!("Enregistré : {}", r.finish()).into());
                 g.set_recording(false);
             } else if let Some(sr) = st.engine.as_ref().map(|e| e.sample_rate) {
-                match audio::start_recording(&sh, sr) {
+                let dir = st.rec_dir.clone();
+                match audio::start_recording(&sh, sr, &dir) {
                     Ok(r) => {
                         st.rec_start = Instant::now();
                         st.recorder = Some(r);
@@ -181,6 +205,23 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
             } else {
                 g.set_rec_info("Démarre d'abord l'audio.".into());
+            }
+        });
+    }
+
+    // Choix du dossier d'enregistrement
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_pick_rec_dir(move || {
+            let start = st.borrow().rec_dir.clone();
+            let mut dlg = rfd::FileDialog::new().set_title("Dossier des enregistrements");
+            if start.exists() {
+                dlg = dlg.set_directory(&start);
+            }
+            if let Some(dir) = dlg.pick_folder() {
+                save_rec_dir(&dir);
+                weak.upgrade().unwrap().global::<S>().set_rec_dir(format!("Dossier : {}", dir.display()).into());
+                st.borrow_mut().rec_dir = dir;
             }
         });
     }

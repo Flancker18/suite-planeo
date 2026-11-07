@@ -19,6 +19,7 @@ export global S {
     in-out property <string> hz;
     in-out property <string> status: "Arrêté";
     in-out property <string> rec-info;
+    in-out property <string> rec-dir;
     in-out property <int> beat: -1;
     in-out property <[string]> devs-in;
     in-out property <[string]> devs-out;
@@ -32,6 +33,7 @@ export global S {
     callback start();
     callback stop();
     callback toggle-rec();
+    callback pick-rec-dir();
     callback pick-in(int);
     callback pick-out(int);
     callback apply-preset(int);
@@ -311,8 +313,8 @@ export component AppWindow inherits Window {
             Panel {
                 title: "ENREGISTREMENT";
                 VerticalLayout {
-                    spacing: 8px;
-                    width: 190px;
+                    spacing: 6px;
+                    width: 210px;
                     Rectangle {
                         height: 30px;
                         border-radius: 5px;
@@ -321,6 +323,14 @@ export component AppWindow inherits Window {
                         TouchArea { clicked => { S.toggle-rec(); } }
                     }
                     Text { text: S.rec-info; color: #8f7f6a; font-size: 11px; wrap: word-wrap; }
+                    Text { text: S.rec-dir; color: #b9a88f; font-size: 10px; wrap: word-wrap; }
+                    Rectangle {
+                        height: 24px;
+                        border-radius: 5px;
+                        background: S.recording ? #2a2420 : #3a322b;
+                        Text { text: "Choisir le dossier…"; color: S.recording ? #6b5a48 : #f2e6d0; font-size: 12px; }
+                        TouchArea { enabled: !S.recording; clicked => { S.pick-rec-dir(); } }
+                    }
                 }
             }
             Panel {

@@ -16,7 +16,7 @@ cargo run --release
 Branche la guitare, choisis l'entrée et la sortie, clique sur **Démarrer**. **Mets un casque** pour éviter le larsen.
 Dans Windows, règle l'entrée et la sortie sur la même fréquence (48000 Hz de préférence) et désactive les « améliorations audio ».
 
-Les enregistrements vont dans `Documents\Guitar Amp`, tes presets dans le dossier de configuration de l'utilisateur.
+Les enregistrements vont par défaut dans `Documents\Guitar Amp`; le bouton « Choisir le dossier… » permet d'en changer (le choix est mémorisé), tes presets dans le dossier de configuration de l'utilisateur.
 
 ## Installateur Windows
 
