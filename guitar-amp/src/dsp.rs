@@ -109,6 +109,18 @@ fn knob_db(v: f32) -> f32 {
     (v - 5.0) * 2.4
 }
 
+/// Limiteur doux final : transparent sous 0,8, puis le son est écrasé progressivement sans jamais dépasser 1,0
+/// (protège les oreilles et la carte son quand tous les réglages sont poussés à fond).
+#[inline]
+pub fn soft_limit(x: f32) -> f32 {
+    let a = x.abs();
+    if a < 0.8 {
+        x
+    } else {
+        x.signum() * (0.8 + 0.2 * ((a - 0.8) / 0.2).tanh())
+    }
+}
+
 /// Saturation asymétrique (type lampe), sortie normalisée à ~1.
 #[inline]
 pub fn shape(x: f32, k: f32, bias: f32) -> f32 {
@@ -277,6 +289,7 @@ struct Amp {
     sr: f32,
     pre_hp: Biquad,
     inter_hp: Biquad,
+    dc: Biquad,
     os1: Oversampler2x,
     os2: Oversampler2x,
     bass: Biquad,
@@ -295,6 +308,7 @@ impl Amp {
             sr,
             pre_hp: Biquad::new(FilterKind::HighPass, sr, 80.0, 0.7, 0.0),
             inter_hp: Biquad::new(FilterKind::HighPass, sr, 200.0, 0.5, 0.0),
+            dc: Biquad::new(FilterKind::HighPass, sr, 20.0, 0.7, 0.0),
             os1: Oversampler2x::new(sr),
             os2: Oversampler2x::new(sr),
             bass: Biquad::new(FilterKind::LowShelf, sr, 120.0, 0.7, 0.0),
@@ -336,6 +350,8 @@ impl Amp {
             y = self.inter_hp.process(y);
             y = self.os2.process(y * 2.0, |v| shape(v, m.k2, 0.02));
         }
+        // La saturation asymétrique crée un décalage continu : on le retire avant l'égaliseur.
+        y = self.dc.process(y);
         y = self.eq(y);
         if p.cab_on > 0.5 {
             y = self.cab_dip.process(self.cab_lp2.process(self.cab_lp1.process(self.cab_hp.process(y))));
@@ -604,7 +620,7 @@ impl Chain {
         if p.rv_on > 0.5 {
             y = self.reverb.process(y, p);
         }
-        y * self.master_s.next((p.master / 10.0).powi(2) * 1.4)
+        soft_limit(y * self.master_s.next((p.master / 10.0).powi(2) * 1.4))
     }
 
     #[inline]
@@ -668,6 +684,11 @@ pub fn note_info(freq: f32) -> (String, f32) {
     (format!("{}{}", NOTE_NAMES[idx], octave), cents)
 }
 
+/// Nom d'une note MIDI, par exemple 40 -> « Mi2 ».
+pub fn midi_name(midi: i32) -> String {
+    format!("{}{}", NOTE_NAMES[midi.rem_euclid(12) as usize], midi.div_euclid(12) - 1)
+}
+
 // ---------------------------------------------------------------- tests
 
 #[cfg(test)]
@@ -687,6 +708,42 @@ mod tests {
         let out: Vec<f32> = sine(10000.0, 4800, 1.0).into_iter().map(|x| f.process(x)).collect();
         let peak = out[2400..].iter().fold(0.0f32, |a, v| a.max(v.abs()));
         assert!(peak < 0.05, "peak={peak}");
+    }
+
+    #[test]
+    fn soft_limit_is_transparent_then_bounded() {
+        assert_eq!(soft_limit(0.5), 0.5);
+        assert_eq!(soft_limit(-0.79), -0.79);
+        for i in 0..2000 {
+            let x = i as f32 / 10.0;
+            assert!(soft_limit(x) <= 1.0 && soft_limit(-x) >= -1.0);
+        }
+        assert!(soft_limit(0.95) > 0.8 && soft_limit(0.95) < 1.0);
+        assert!(soft_limit(1.0) > soft_limit(0.9)); // reste croissant
+    }
+
+    #[test]
+    fn no_dc_offset_even_without_cabinet() {
+        let sr = 44100.0;
+        for model in 0..4 {
+            let p = Params::new();
+            p.amp_model.set(model as f32);
+            p.cab_on.set(0.0);
+            for n in ["amp_gain", "bass", "master"] {
+                p.set_by_name(n, 10.0);
+            }
+            let v = p.read();
+            let mut chain = Chain::new(sr);
+            chain.update(&v);
+            let (mut sum, mut n) = (0.0f32, 0usize);
+            for i in 0..(sr * 3.0) as usize {
+                let t = i as f32 / sr;
+                let x = 0.1 * (2.0 * PI * 110.0 * t).sin() * (-t).exp();
+                sum += chain.process(x, &v);
+                n += 1;
+            }
+            assert!((sum / n as f32).abs() < 0.02, "modèle {model} : décalage {}", sum / n as f32);
+        }
     }
 
     #[test]
@@ -731,6 +788,8 @@ mod tests {
         assert!(c.abs() < 0.1);
         let (n, _) = note_info(82.41);
         assert_eq!(n, "Mi2");
+        assert_eq!(midi_name(40), "Mi2");
+        assert_eq!(midi_name(69), "La4");
         let (_, c) = note_info(442.0);
         assert!(c > 7.0 && c < 9.0);
     }
@@ -818,3 +877,315 @@ mod tests {
         assert_eq!(b.metro_bpm.get(), 100.0);
     }
 }
+
+// ---------------------------------------------------------------- campagne de tests « tous les sons »
+
+#[cfg(test)]
+mod sweep {
+    use super::*;
+    use crate::params::Params;
+    use std::time::Instant;
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> f32 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            (self.0 >> 40) as f32 / (1u64 << 24) as f32
+        }
+    }
+
+    /// Note de guitare pincée : harmoniques décroissantes, extinction progressive.
+    fn pluck(freq: f32, secs: f32, sr: f32, amp: f32) -> Vec<f32> {
+        (0..(secs * sr) as usize)
+            .map(|i| {
+                let t = i as f32 / sr;
+                let mut v = 0.0;
+                for k in 1..=6 {
+                    v += (2.0 * PI * freq * k as f32 * t).sin() / k as f32 * (-t * (1.5 + k as f32)).exp();
+                }
+                v * amp * (1.0 - (-t * 400.0).exp())
+            })
+            .collect()
+    }
+
+    fn riff(sr: f32, amp: f32) -> Vec<f32> {
+        let mut out = Vec::new();
+        for f in [82.41, 110.0, 146.83, 196.0, 246.94, 329.63] {
+            out.extend(pluck(f, 0.35, sr, amp));
+        }
+        // accord de mi majeur
+        let chord: Vec<Vec<f32>> = [82.41, 123.47, 164.81, 207.65, 246.94, 329.63].iter().map(|&f| pluck(f, 1.2, sr, amp * 0.5)).collect();
+        for i in 0..chord[0].len() {
+            out.push(chord.iter().map(|c| c[i]).sum());
+        }
+        out
+    }
+
+    fn noise(n: usize, amp: f32, seed: u64) -> Vec<f32> {
+        let mut r = Rng(seed);
+        (0..n).map(|_| (r.next() * 2.0 - 1.0) * amp).collect()
+    }
+
+    fn render(params: &Params, input: &[f32], sr: f32, mut jitter: Option<&mut Rng>) -> Vec<f32> {
+        let mut chain = Chain::new(sr);
+        let mut out = Vec::with_capacity(input.len());
+        for block in input.chunks(256) {
+            if let Some(r) = jitter.as_deref_mut() {
+                // Un potard bouge pendant le jeu
+                let names = ["amp_gain", "bass", "mid", "treble", "master", "dl_time", "dl_fb", "rv_size", "od_drive", "body"];
+                let n = names[(r.next() * names.len() as f32) as usize % names.len()];
+                params.set_by_name(n, r.next() * 10.0);
+            }
+            let p = params.read();
+            chain.update(&p);
+            for &x in block {
+                out.push(chain.process(x.clamp(-1.0, 1.0), &p));
+            }
+        }
+        out
+    }
+
+    fn rms(v: &[f32]) -> f32 {
+        (v.iter().map(|x| x * x).sum::<f32>() / v.len().max(1) as f32).sqrt()
+    }
+    fn db(x: f32) -> f32 {
+        20.0 * x.max(1e-9).log10()
+    }
+    fn peak(v: &[f32]) -> f32 {
+        v.iter().fold(0.0, |a, x| a.max(x.abs()))
+    }
+
+    /// Énergie (dB) dans trois bandes : graves < 250 Hz, médiums, aigus > 2,5 kHz.
+    fn bands(v: &[f32], sr: f32) -> (f32, f32, f32) {
+        let mut lp = Biquad::new(FilterKind::LowPass, sr, 250.0, 0.7, 0.0);
+        let mut hp1 = Biquad::new(FilterKind::HighPass, sr, 250.0, 0.7, 0.0);
+        let mut lp2 = Biquad::new(FilterKind::LowPass, sr, 2500.0, 0.7, 0.0);
+        let mut hp2 = Biquad::new(FilterKind::HighPass, sr, 2500.0, 0.7, 0.0);
+        let low: Vec<f32> = v.iter().map(|&x| lp.process(x)).collect();
+        let mid: Vec<f32> = v.iter().map(|&x| lp2.process(hp1.process(x))).collect();
+        let high: Vec<f32> = v.iter().map(|&x| hp2.process(x)).collect();
+        (db(rms(&low)), db(rms(&mid)), db(rms(&high)))
+    }
+
+    fn all_effects_on(p: &Params) {
+        for n in ["od_on", "ch_on", "dl_on", "rv_on", "cab_on", "gate_on"] {
+            p.set_by_name(n, 1.0);
+        }
+    }
+
+    /// Les 10 « sons » : 4 amplis électriques + 5 instruments acoustiques (+ ampli par défaut).
+    fn sounds() -> Vec<(String, f32, f32)> {
+        let mut v: Vec<(String, f32, f32)> = ["Clean", "Crunch", "Lead", "Metal"].iter().enumerate().map(|(i, n)| (format!("Électrique {n}"), 0.0, i as f32)).collect();
+        for (i, n) in ["Classique", "Folk", "Country jumbo", "Ukulélé", "Banjo"].iter().enumerate() {
+            v.push((format!("Acoustique {n}"), 1.0 + i as f32, 1.0));
+        }
+        v
+    }
+
+    fn sound_params(inst: f32, model: f32) -> Params {
+        let p = Params::new();
+        p.inst.set(inst);
+        p.amp_model.set(model);
+        p
+    }
+
+    #[test]
+    fn every_sound_every_extreme_every_signal() {
+        let mut combos = 0;
+        for sr in [44100.0f32, 48000.0, 96000.0] {
+            let signals: Vec<(&str, Vec<f32>)> = vec![
+                ("riff doux", riff(sr, 0.1)),
+                ("riff fort", riff(sr, 0.9)),
+                ("bruit fort", noise((sr * 1.0) as usize, 1.0, 7)),
+                ("silence", vec![0.0; (sr * 1.0) as usize]),
+            ];
+            for (name, inst, model) in sounds() {
+                for knobs in [0.0f32, 5.0, 10.0] {
+                    for effects in [false, true] {
+                        let p = sound_params(inst, model);
+                        for n in ["amp_gain", "bass", "mid", "treble", "presence", "master", "body", "input", "od_drive", "od_tone", "od_level", "ch_rate", "ch_depth", "ch_mix", "dl_time", "dl_fb", "dl_mix", "rv_size", "rv_mix", "gate_th"] {
+                            p.set_by_name(n, knobs);
+                        }
+                        if effects {
+                            all_effects_on(&p);
+                        } else {
+                            p.set_by_name("gate_on", 0.0);
+                        }
+                        for (sname, sig) in &signals {
+                            let out = render(&p, sig, sr, None);
+                            let ctx = format!("{name} | {sr} Hz | potards {knobs} | effets {effects} | {sname}");
+                            assert!(out.iter().all(|x| x.is_finite()), "NaN/inf : {ctx}");
+                            let pk = peak(&out);
+                            assert!(pk <= 1.001, "le limiteur laisse passer {pk} : {ctx}");
+                            if *sname == "silence" {
+                                assert!(pk < 1e-3, "bruit sur silence ({pk}) : {ctx}");
+                            }
+                            let mean = out.iter().sum::<f32>() / out.len() as f32;
+                            // Tout à fond (potards à 10) : le signal dépasse 10 fois le maximum, le limiteur écrase des pics asymétriques.
+                            let max_dc = if knobs >= 10.0 { 0.25 } else { 0.05 };
+                            assert!(mean.abs() < max_dc, "décalage continu ({mean}) : {ctx}");
+                            combos += 1;
+                        }
+                    }
+                }
+            }
+        }
+        println!("Combinaisons testées : {combos}");
+    }
+
+    #[test]
+    fn tails_always_decay_never_grow() {
+        // Delay (répétitions max, 1 s) et reverb au maximum : après le jeu, l'énergie doit décroître régulièrement.
+        let sr = 48000.0;
+        for (name, inst, model) in sounds() {
+            let p = sound_params(inst, model);
+            all_effects_on(&p);
+            for n in ["dl_fb", "dl_mix", "dl_time", "rv_size", "rv_mix", "master"] {
+                p.set_by_name(n, 10.0);
+            }
+            let play = riff(sr, 0.5).len();
+            let mut sig = riff(sr, 0.5);
+            sig.extend(vec![0.0; (sr * 30.0) as usize]);
+            let out = render(&p, &sig, sr, None);
+            let win = |from_s: f32| {
+                let a = play + (from_s * sr) as usize;
+                rms(&out[a..a + (sr * 2.0) as usize])
+            };
+            let (w5, w15, w25) = (win(5.0), win(15.0), win(25.0));
+            assert!(w15 < w5 * 0.9 && w25 < w15 * 0.9, "{name} : la queue ne décroît pas ({:.1}, {:.1}, {:.1} dBFS)", db(w5), db(w15), db(w25));
+            println!("  {name:<28} queue : {:>6.1} -> {:>6.1} -> {:>6.1} dBFS (à +5 s, +15 s, +25 s)", db(w5), db(w15), db(w25));
+        }
+        // Avec des réglages raisonnables (répétitions moyennes), le silence revient vite
+        let p = Params::new();
+        all_effects_on(&p);
+        let mut sig = riff(sr, 0.3);
+        sig.extend(vec![0.0; (sr * 15.0) as usize]);
+        let out = render(&p, &sig, sr, None);
+        assert!(rms(&out[out.len() - (sr * 2.0) as usize..]) < 1e-3, "réglages normaux : la queue devrait être éteinte");
+    }
+
+    #[test]
+    fn knobs_moving_while_playing_never_break_the_sound() {
+        let sr = 48000.0;
+        let mut r = Rng(99);
+        for (name, inst, model) in sounds() {
+            let p = sound_params(inst, model);
+            all_effects_on(&p);
+            let out = render(&p, &riff(sr, 0.4), sr, Some(&mut r));
+            assert!(out.iter().all(|x| x.is_finite()), "{name}");
+            assert!(peak(&out) <= 1.001, "{name}");
+        }
+    }
+
+    #[test]
+    fn switching_sound_on_the_fly_is_safe() {
+        // On change d'instrument et d'ampli en pleine note, comme avec les boutons de l'interface.
+        let sr = 48000.0;
+        let sig = riff(sr, 0.5);
+        let p = Params::new();
+        all_effects_on(&p);
+        let mut chain = Chain::new(sr);
+        let mut count = 0usize;
+        for block in sig.chunks(256) {
+            p.inst.set((count % 6) as f32);
+            p.amp_model.set((count % 4) as f32);
+            let v = p.read();
+            chain.update(&v);
+            for &x in block {
+                let y = chain.process(x, &v);
+                assert!(y.is_finite() && y.abs() <= 1.001);
+            }
+            count += 1;
+        }
+    }
+
+    #[test]
+    fn performance_is_comfortably_real_time() {
+        let sr = 48000.0;
+        let secs = 20.0;
+        let sig = noise((sr * secs) as usize, 0.3, 3);
+        let mut worst = 0.0f32;
+        for (name, inst, model) in sounds() {
+            let p = sound_params(inst, model);
+            all_effects_on(&p);
+            let t = Instant::now();
+            let out = render(&p, &sig, sr, None);
+            let took = t.elapsed().as_secs_f32();
+            assert!(out.len() == sig.len());
+            let xrt = secs / took;
+            println!("  {name:<28} {xrt:>7.0}x temps réel (tous effets actifs)");
+            worst = worst.max(took / secs);
+            if !cfg!(debug_assertions) || true {
+                assert!(xrt > 20.0, "{name} trop lent : {xrt}x");
+            }
+        }
+        println!("  charge processeur la pire : {:.2} % d'un cœur", worst * 100.0);
+    }
+
+    #[test]
+    fn character_table() {
+        let sr = 48000.0;
+        let sig = riff(sr, 0.3);
+        println!();
+        println!("  {:<28} {:>7} {:>8} {:>8} {:>8} {:>8}", "Son (réglages par défaut)", "pic", "niveau", "graves", "médiums", "aigus");
+        let mut levels = Vec::new();
+        for (name, inst, model) in sounds() {
+            let p = sound_params(inst, model);
+            p.set_by_name("gate_on", 0.0);
+            let out = render(&p, &sig, sr, None);
+            let (l, m, h) = bands(&out, sr);
+            let lvl = db(rms(&out));
+            levels.push((name.clone(), lvl));
+            println!("  {name:<28} {:>6.2} {:>7.1} {:>8.1} {:>8.1} {:>8.1}", peak(&out), lvl, l, m, h);
+        }
+        // Les sons doivent rester dans une plage de volume comparable (pour ne pas casser les oreilles en changeant de son)
+        let min = levels.iter().map(|x| x.1).fold(f32::MAX, f32::min);
+        let max = levels.iter().map(|x| x.1).fold(f32::MIN, f32::max);
+        println!("  écart de volume entre les sons : {:.1} dB", max - min);
+        assert!(max - min < 18.0, "écart de volume trop grand : {:.1} dB", max - min);
+    }
+
+    #[test]
+    fn long_random_fuzz() {
+        let secs: f32 = std::env::var("FUZZ_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(2.0);
+        let start = Instant::now();
+        let mut r = Rng(0x9E3779B97F4A7C15);
+        let (mut runs, mut worst_peak) = (0u64, 0.0f32);
+        let names: Vec<String> = Params::new().snapshot().keys().cloned().collect();
+        while start.elapsed().as_secs_f32() < secs {
+            let p = Params::new();
+            for n in &names {
+                let v = if n.ends_with("_on") || n == "cab_on" {
+                    if r.next() > 0.5 { 1.0 } else { 0.0 }
+                } else if n == "inst" {
+                    (r.next() * 6.0).floor().min(5.0)
+                } else if n == "amp_model" {
+                    (r.next() * 4.0).floor().min(3.0)
+                } else {
+                    r.next() * 10.0
+                };
+                p.set_by_name(n, v);
+            }
+            p.set_by_name("metro_on", 1.0);
+            p.set_by_name("metro_bpm", 40.0 + r.next() * 180.0);
+            let sr = [22050.0f32, 44100.0, 48000.0, 96000.0][(r.next() * 4.0) as usize % 4];
+            let sig = match (r.next() * 4.0) as usize {
+                0 => riff(sr, 0.05 + r.next() * 0.9),
+                1 => noise((sr * 1.5) as usize, r.next(), runs + 1),
+                2 => pluck(70.0 + r.next() * 700.0, 1.5, sr, r.next()),
+                _ => vec![0.0; (sr * 0.5) as usize],
+            };
+            let out = render(&p, &sig, sr, Some(&mut r));
+            assert!(out.iter().all(|x| x.is_finite()), "NaN avec {:?}", p.snapshot());
+            let pk = peak(&out);
+            assert!(pk <= 1.001, "le limiteur laisse passer {pk} avec {:?}", p.snapshot());
+            worst_peak = worst_peak.max(pk);
+            runs += 1;
+        }
+        println!("  fuzz : {runs} configurations aléatoires en {:.0} s, pic maximal {:.2}, aucune anomalie", start.elapsed().as_secs_f32(), worst_peak);
+    }
+}
+
+

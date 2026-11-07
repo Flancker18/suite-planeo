@@ -83,6 +83,10 @@ fn save_rec_dir(dir: &std::path::Path) {
 }
 
 struct State {
+    follower: tab::Follower,
+    tab_wait: bool,
+    detected: Option<i32>,
+    det_stable: u32,
     tab: Option<Rc<tab::TabSong>>,
     tab_track: usize,
     tab_pos: f32,
@@ -114,6 +118,13 @@ fn preset_names(st: &State) -> ModelRc<SharedString> {
 const TAB_BEFORE: f32 = 1.5; // noires visibles avant la tête de lecture
 const TAB_SPAN: f32 = 12.0; // noires visibles au total
 
+/// Replace le suivi de notes à la position courante (après un saut, un changement de piste...).
+fn sync_follower(st: &mut State) {
+    if let Some(song) = st.tab.clone() {
+        st.follower.seek(&song.tracks[st.tab_track], st.tab_pos);
+    }
+}
+
 fn show_track(st: &State, g: &S) {
     if let Some(song) = &st.tab {
         g.set_tab_strings(song.tracks[st.tab_track].strings as i32);
@@ -135,6 +146,7 @@ fn open_tab(path: &std::path::Path, st: &Rc<RefCell<State>>, g: &S) {
             st.tab_track = 0;
             st.tab_pos = 0.0;
             st.tab_playing = false;
+            sync_follower(&mut st);
             show_track(&st, g);
         }
         Err(e) => g.set_status(format!("Tablature : {e}").into()),
@@ -145,6 +157,7 @@ fn open_tab(path: &std::path::Path, st: &Rc<RefCell<State>>, g: &S) {
 fn update_tab(st: &mut State, g: &S, dt: f32) {
     let Some(song) = st.tab.clone() else { return };
     let track = &song.tracks[st.tab_track];
+    let mut waiting: Option<Vec<i32>> = None;
     if st.tab_playing {
         let tempo = track.bars[track.bar_index(st.tab_pos)].1;
         st.tab_pos += dt * tempo * st.tab_speed / 100.0 / 60.0;
@@ -153,7 +166,27 @@ fn update_tab(st: &mut State, g: &S, dt: f32) {
             st.tab_playing = false;
             g.set_tab_playing(false);
         }
+        if st.tab_wait && st.engine.is_some() {
+            // Mode « attend ma note » : la position reste bloquée tant que la note n'est pas jouée.
+            let det = st.detected.map(|m| (m, st.det_stable));
+            waiting = st.follower.step(track, &mut st.tab_pos, det);
+        } else {
+            st.follower.skip_passed(track, st.tab_pos);
+        }
     }
+    let text = if !st.tab_wait {
+        String::new()
+    } else if st.engine.is_none() {
+        "Démarre l'audio pour jouer avec la tablature".to_string()
+    } else if !st.tab_playing {
+        "Appuie sur Lecture, puis joue les notes".to_string()
+    } else if let Some(exp) = waiting {
+        let names: Vec<String> = exp.iter().map(|&m| dsp::midi_name(m)).collect();
+        format!("À jouer : {}", names.join(" / "))
+    } else {
+        String::new()
+    };
+    g.set_tab_wait_text(text.into());
     let pos = st.tab_pos;
     let lo = pos - TAB_BEFORE;
     let hi = lo + TAB_SPAN;
@@ -190,6 +223,10 @@ fn main() -> Result<(), slint::PlatformError> {
     g.set_v(shared.params.to_ui());
 
     let state = Rc::new(RefCell::new(State {
+        follower: tab::Follower::default(),
+        tab_wait: false,
+        detected: None,
+        det_stable: 0,
         tab: None,
         tab_track: 0,
         tab_pos: 0.0,
@@ -347,12 +384,17 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             st.tab_playing = !st.tab_playing;
             st.last_tick = Instant::now();
+            sync_follower(&mut st);
             weak.upgrade().unwrap().global::<S>().set_tab_playing(st.tab_playing);
         });
     }
     {
         let st = state.clone();
-        g.on_tab_restart(move || st.borrow_mut().tab_pos = 0.0);
+        g.on_tab_restart(move || {
+            let mut st = st.borrow_mut();
+            st.tab_pos = 0.0;
+            sync_follower(&mut st);
+        });
     }
     {
         let st = state.clone();
@@ -362,6 +404,7 @@ fn main() -> Result<(), slint::PlatformError> {
             let t = &song.tracks[st.tab_track];
             let i = (t.bar_index(st.tab_pos) as i32 + d).clamp(0, t.bars.len() as i32 - 1) as usize;
             st.tab_pos = t.bars[i].0;
+            sync_follower(&mut st);
         });
     }
     {
@@ -371,8 +414,18 @@ fn main() -> Result<(), slint::PlatformError> {
             let n = st.tab.as_ref().map(|t| t.tracks.len()).unwrap_or(0);
             if n > 0 {
                 st.tab_track = (i.max(0) as usize).min(n - 1);
+                sync_follower(&mut st);
                 show_track(&st, &weak.upgrade().unwrap().global::<S>());
             }
+        });
+    }
+    {
+        let (st, weak) = (state.clone(), ui.as_weak());
+        g.on_tab_toggle_wait(move || {
+            let mut st = st.borrow_mut();
+            st.tab_wait = !st.tab_wait;
+            sync_follower(&mut st);
+            weak.upgrade().unwrap().global::<S>().set_tab_wait(st.tab_wait);
         });
     }
     {
@@ -435,7 +488,6 @@ fn main() -> Result<(), slint::PlatformError> {
             let now = Instant::now();
             let dt = (now - st.last_tick).as_secs_f32().min(0.2);
             st.last_tick = now;
-            update_tab(&mut st, &g, dt);
             st.in_disp = sh.in_peak.get().max(st.in_disp * 0.85);
             st.out_disp = sh.out_peak.get().max(st.out_disp * 0.85);
             g.set_in_level(st.in_disp.sqrt());
@@ -453,12 +505,21 @@ fn main() -> Result<(), slint::PlatformError> {
                 }
                 st.tuner.push_back(x);
             }
-            if st.tick % 3 == 0 {
+            if st.tick % 2 == 0 {
                 if let (Some(sr), true) = (st.engine.as_ref().map(|e| e.sample_rate), st.tuner.len() == 4096) {
                     let buf: Vec<f32> = st.tuner.iter().copied().collect();
                     match dsp::detect_pitch(&buf, sr as f32) {
                         Some(hz) => {
                             st.silent_ticks = 0;
+                            let m = (69.0 + 12.0 * (hz / 440.0).log2()).round() as i32;
+                            if st.detected == Some(m) {
+                                st.det_stable += 1;
+                            } else {
+                                st.detected = Some(m);
+                                st.det_stable = 1;
+                            }
+                            let d = st.detected;
+                            st.follower.heard(d);
                             st.hz = if st.hz > 0.0 && (st.hz / hz - 1.0).abs() < 0.05 { st.hz * 0.6 + hz * 0.4 } else { hz };
                             let (note, cents) = dsp::note_info(st.hz);
                             g.set_note(note.into());
@@ -466,6 +527,9 @@ fn main() -> Result<(), slint::PlatformError> {
                             g.set_hz(format!("{:.1} Hz  ({:+.0} cents)", st.hz, cents).into());
                         }
                         None => {
+                            st.detected = None;
+                            st.det_stable = 0;
+                            st.follower.heard(None);
                             st.silent_ticks += 1;
                             if st.silent_ticks > 10 {
                                 st.hz = 0.0;
@@ -477,6 +541,11 @@ fn main() -> Result<(), slint::PlatformError> {
                     }
                 }
             }
+            if st.engine.is_none() {
+                st.detected = None;
+                st.det_stable = 0;
+            }
+            update_tab(&mut st, &g, dt);
         });
     }
 

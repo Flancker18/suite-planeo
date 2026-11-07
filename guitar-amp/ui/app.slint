@@ -49,6 +49,9 @@ export global S {
     callback tab-restart();
     callback tab-step(int);
     callback tab-pick-track(int);
+    in-out property <bool> tab-wait;
+    in-out property <string> tab-wait-text;
+    callback tab-toggle-wait();
     callback tab-set-speed(float);
     callback edit(string, float);
     callback start();
@@ -243,12 +246,19 @@ component TabView inherits Rectangle {
             Text { text: S.tab-measure; color: #b9a88f; vertical-alignment: center; min-width: 90px; horizontal-alignment: center; }
             Btn { text: "▶"; clicked => { S.tab-step(1); } }
             Rectangle { }
+            Btn { text: "Ouvrir…"; clicked => { S.tab-load(); } }
+            Btn { text: "Fermer"; clicked => { S.tab-close(); } }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            height: 26px;
+            Btn { text: S.tab-wait ? "✔ J'attends ma note" : "Attendre ma note"; accent: S.tab-wait; min-width: 160px; clicked => { S.tab-toggle-wait(); } }
+            Text { text: S.tab-wait-text; color: #ffb866; font-weight: 700; vertical-alignment: center; }
+            Rectangle { }
             Text { text: "Vitesse"; color: #b9a88f; vertical-alignment: center; }
             Btn { text: "−"; clicked => { S.tab-set-speed(S.tab-speed - 10); } }
             Text { text: Math.round(S.tab-speed) + " %"; color: #f2e6d0; vertical-alignment: center; min-width: 44px; horizontal-alignment: center; }
             Btn { text: "+"; clicked => { S.tab-set-speed(S.tab-speed + 10); } }
-            Btn { text: "Ouvrir…"; clicked => { S.tab-load(); } }
-            Btn { text: "Fermer"; clicked => { S.tab-close(); } }
         }
         Rectangle {
             background: #17130f;
@@ -289,9 +299,9 @@ export component AppWindow inherits Window {
     title: "Guitar Amp";
     icon: @image-url("../assets/icon.png");
     preferred-width: 1100px;
-    preferred-height: 920px;
+    preferred-height: 950px;
     min-width: 1050px;
-    min-height: 800px;
+    min-height: 830px;
     background: #14110f;
 
     VerticalLayout {
@@ -513,7 +523,7 @@ export component AppWindow inherits Window {
         // --- Grille d'ampli (décor) ou lecteur de tablature
         Rectangle {
             vertical-stretch: 1;
-            min-height: 150px;
+            min-height: 190px;
             if !S.tab-shown: AmpGrille { }
             if S.tab-shown: TabView { }
         }
