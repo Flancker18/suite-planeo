@@ -316,9 +316,15 @@ impl Amp {
         let sr = self.sr;
         self.pre_hp.set(FilterKind::HighPass, sr, m.hp, 0.7, 0.0);
         self.bass.set(FilterKind::LowShelf, sr, 120.0, 0.7, knob_db(p.bass));
-        self.mid.set(FilterKind::Peaking, sr, 700.0, 0.9, knob_db(p.mid) + m.mid_shift);
+        let shift = if p.inst > 0.5 { 0.0 } else { m.mid_shift };
+        self.mid.set(FilterKind::Peaking, sr, 700.0, 0.9, knob_db(p.mid) + shift);
         self.treble.set(FilterKind::HighShelf, sr, 3200.0, 0.7, knob_db(p.treble));
         self.presence.set(FilterKind::HighShelf, sr, 5500.0, 0.7, knob_db(p.presence) * 0.7);
+    }
+    /// Égaliseur seul (utilisé aussi par les sons acoustiques).
+    #[inline]
+    fn eq(&mut self, y: f32) -> f32 {
+        self.presence.process(self.treble.process(self.mid.process(self.bass.process(y))))
     }
     #[inline]
     fn process(&mut self, x: f32, p: &Values) -> f32 {
@@ -330,11 +336,93 @@ impl Amp {
             y = self.inter_hp.process(y);
             y = self.os2.process(y * 2.0, |v| shape(v, m.k2, 0.02));
         }
-        y = self.presence.process(self.treble.process(self.mid.process(self.bass.process(y))));
+        y = self.eq(y);
         if p.cab_on > 0.5 {
             y = self.cab_dip.process(self.cab_lp2.process(self.cab_lp1.process(self.cab_hp.process(y))));
         }
         y * m.trim
+    }
+}
+
+
+// ---------------------------------------------------------------- sons acoustiques
+
+/// Réglages d'un instrument : filtres passe-haut / passe-bas et 4 résonances du « corps ».
+struct Tone {
+    hp: f32,
+    lp: f32,
+    bands: [(FilterKind, f32, f32, f32); 4],
+}
+use FilterKind::{HighShelf, Peaking};
+const TONES: [Tone; 5] = [
+    // Guitare classique (nylon) : chaude, aigus doux
+    Tone { hp: 80.0, lp: 6500.0, bands: [(Peaking, 100.0, 2.0, 5.0), (Peaking, 220.0, 1.2, 3.0), (Peaking, 500.0, 1.0, -2.0), (HighShelf, 4000.0, 0.7, -3.0)] },
+    // Folk (cordes acier) : équilibrée, claire
+    Tone { hp: 70.0, lp: 11000.0, bands: [(Peaking, 100.0, 2.0, 4.0), (Peaking, 250.0, 1.2, 2.0), (Peaking, 400.0, 1.0, -3.0), (HighShelf, 3500.0, 0.7, 4.0)] },
+    // Grosse guitare country (jumbo) : graves puissants, médiums creusés
+    Tone { hp: 60.0, lp: 11000.0, bands: [(Peaking, 90.0, 1.8, 6.0), (Peaking, 180.0, 1.2, 3.0), (Peaking, 350.0, 1.0, -4.0), (HighShelf, 3000.0, 0.7, 4.0)] },
+    // Ukulélé : pas de graves, résonance vers 500 Hz
+    Tone { hp: 220.0, lp: 7500.0, bands: [(Peaking, 500.0, 1.5, 5.0), (Peaking, 1200.0, 1.2, 2.0), (Peaking, 300.0, 1.0, -2.0), (HighShelf, 5000.0, 0.7, -2.0)] },
+    // Banjo : nasal, métallique, attaque sèche
+    Tone { hp: 150.0, lp: 9000.0, bands: [(Peaking, 1200.0, 1.2, 6.0), (Peaking, 2500.0, 1.2, 5.0), (Peaking, 300.0, 1.0, -4.0), (HighShelf, 5000.0, 0.7, 4.0)] },
+];
+
+/// Simule le corps d'une guitare acoustique à partir du signal de la guitare électrique.
+struct Acoustic {
+    sr: f32,
+    hp: Biquad,
+    lp: Biquad,
+    bands: [Biquad; 4],
+    key: (i32, i32),
+    env: f32,
+    att: f32,
+    rel: f32,
+}
+impl Acoustic {
+    fn new(sr: f32) -> Self {
+        let b = || Biquad::new(Peaking, sr, 1000.0, 1.0, 0.0);
+        Self {
+            sr,
+            hp: Biquad::new(FilterKind::HighPass, sr, 80.0, 0.7, 0.0),
+            lp: Biquad::new(FilterKind::LowPass, sr, 8000.0, 0.7, 0.0),
+            bands: [b(), b(), b(), b()],
+            key: (-1, -1),
+            env: 0.0,
+            att: 1.0 - (-1.0 / (0.004 * sr)).exp(),
+            rel: 1.0 - (-1.0 / (0.12 * sr)).exp(),
+        }
+    }
+    fn update(&mut self, p: &Values) {
+        if p.inst < 0.5 {
+            return;
+        }
+        let key = (p.inst.round() as i32, (p.body * 10.0) as i32);
+        if key == self.key {
+            return;
+        }
+        self.key = key;
+        let t = &TONES[(key.0 as usize - 1).min(TONES.len() - 1)];
+        self.hp.set(FilterKind::HighPass, self.sr, t.hp, 0.7, 0.0);
+        self.lp.set(FilterKind::LowPass, self.sr, t.lp, 0.7, 0.0);
+        // « Corps » : 5 = réglage nominal, 0 = neutre, 10 = résonances doublées.
+        let k = p.body / 5.0;
+        for (b, &(kind, f, q, g)) in self.bands.iter_mut().zip(t.bands.iter()) {
+            b.set(kind, self.sr, f, q, g * k);
+        }
+    }
+    #[inline]
+    fn process(&mut self, x: f32) -> f32 {
+        let mut y = self.lp.process(self.hp.process(x));
+        for b in self.bands.iter_mut() {
+            y = b.process(y);
+        }
+        // Compresseur doux (rapport 3:1) + gain de compensation : son plus régulier, comme un micro de scène.
+        let a = y.abs();
+        let c = if a > self.env { self.att } else { self.rel };
+        self.env += (a - self.env) * c;
+        let th = 0.12;
+        let gain = if self.env > th { (th / self.env).powf(0.66) } else { 1.0 };
+        y * gain * 3.0
     }
 }
 
@@ -457,6 +545,7 @@ pub struct Chain {
     od: Overdrive,
     chorus: Chorus,
     amp: Amp,
+    acoustic: Acoustic,
     echo: Echo,
     reverb: Reverb,
     metro: Metronome,
@@ -471,6 +560,7 @@ impl Chain {
             od: Overdrive::new(sr),
             chorus: Chorus::new(sr),
             amp: Amp::new(sr),
+            acoustic: Acoustic::new(sr),
             echo: Echo::new(sr),
             reverb: Reverb::new(sr),
             metro: Metronome::new(sr),
@@ -483,6 +573,7 @@ impl Chain {
     pub fn update(&mut self, p: &Values) {
         self.od.update(p);
         self.amp.update(p);
+        self.acoustic.update(p);
     }
 
     /// Traite un échantillon de guitare (mono).
@@ -491,13 +582,22 @@ impl Chain {
         let mut y = x * self.input_s.next(10f32.powf(knob_db(p.input) / 20.0));
         let th = if p.gate_on > 0.5 { 0.002 + p.gate_th / 10.0 * 0.05 } else { 0.0 };
         y = self.gate.process(y, th);
-        if p.od_on > 0.5 {
-            y = self.od.process(y, p);
+        if p.inst > 0.5 {
+            // Instrument acoustique : corps + égaliseur, sans distorsion ni ampli.
+            y = self.acoustic.process(y);
+            y = self.amp.eq(y);
+            if p.ch_on > 0.5 {
+                y = self.chorus.process(y, p);
+            }
+        } else {
+            if p.od_on > 0.5 {
+                y = self.od.process(y, p);
+            }
+            if p.ch_on > 0.5 {
+                y = self.chorus.process(y, p);
+            }
+            y = self.amp.process(y, p);
         }
-        if p.ch_on > 0.5 {
-            y = self.chorus.process(y, p);
-        }
-        y = self.amp.process(y, p);
         if p.dl_on > 0.5 {
             y = self.echo.process(y, p);
         }
@@ -658,6 +758,33 @@ mod tests {
             }
             assert!(peak > 0.01, "modèle {model} muet");
             assert!(peak < 6.0, "modèle {model} trop fort: {peak}");
+        }
+    }
+
+    fn rms_through(inst: f32, freq: f32) -> f32 {
+        let params = Params::new();
+        params.inst.set(inst);
+        params.gate_on.set(0.0);
+        params.master.set(10.0);
+        let p = params.read();
+        let mut chain = Chain::new(SR);
+        chain.update(&p);
+        let out: Vec<f32> = sine(freq, 24000, 0.05).into_iter().map(|x| chain.process(x, &p)).collect();
+        (out[12000..].iter().map(|v| v * v).sum::<f32>() / 12000.0).sqrt()
+    }
+
+    #[test]
+    fn acoustic_instruments_have_their_own_character() {
+        // Banjo : beaucoup plus de médiums-aigus que de graves
+        assert!(rms_through(5.0, 1200.0) > 3.0 * rms_through(5.0, 100.0));
+        // Ukulélé : graves coupés
+        assert!(rms_through(4.0, 80.0) < 0.3 * rms_through(4.0, 500.0));
+        // Jumbo country : plus de graves que la classique
+        assert!(rms_through(3.0, 90.0) > rms_through(1.0, 90.0));
+        // Tous les instruments produisent du son fini
+        for inst in 1..=5 {
+            let r = rms_through(inst as f32, 220.0);
+            assert!(r.is_finite() && r > 0.001, "inst {inst}");
         }
     }
 

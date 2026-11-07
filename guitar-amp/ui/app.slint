@@ -4,6 +4,7 @@ export struct Vals {
     input: float, gate-on: float, gate-th: float,
     od-on: float, od-drive: float, od-tone: float, od-level: float,
     ch-on: float, ch-rate: float, ch-depth: float, ch-mix: float,
+    inst: float, body: float,
     amp-model: float, amp-gain: float, bass: float, mid: float, treble: float, presence: float, master: float, cab-on: float,
     dl-on: float, dl-time: float, dl-fb: float, dl-mix: float,
     rv-on: float, rv-size: float, rv-mix: float,
@@ -148,9 +149,9 @@ export component AppWindow inherits Window {
     title: "Guitar Amp";
     icon: @image-url("../assets/icon.png");
     preferred-width: 1100px;
-    preferred-height: 760px;
+    preferred-height: 840px;
     min-width: 1000px;
-    min-height: 700px;
+    min-height: 780px;
     background: #14110f;
 
     VerticalLayout {
@@ -196,6 +197,7 @@ export component AppWindow inherits Window {
             }
             Panel {
                 title: "OVERDRIVE";
+                opacity: S.v.inst > 0.5 ? 0.3 : 1;
                 on-value: S.v.od-on;
                 toggled(x) => { S.edit("od_on", x); }
                 Knob { label: "Drive"; value: S.v.od-drive; changed(x) => { S.edit("od_drive", x); } }
@@ -212,12 +214,30 @@ export component AppWindow inherits Window {
             }
         }
 
-        // --- Ampli
+        // --- Instrument
         Panel {
-            title: "AMPLI";
+            title: "INSTRUMENT";
+            height: 66px;
+            HorizontalLayout {
+                spacing: 6px;
+                for name[i] in ["Électrique + ampli", "Classique", "Folk", "Country jumbo", "Ukulélé", "Banjo"]: Rectangle {
+                    height: 26px;
+                    min-width: 100px;
+                    horizontal-stretch: 1;
+                    border-radius: 4px;
+                    background: Math.round(S.v.inst) == i ? #ff9a3c : #3a322b;
+                    Text { text: name; color: Math.round(S.v.inst) == i ? #1b1612 : #b9a88f; font-weight: 700; font-size: 12px; }
+                    TouchArea { clicked => { S.edit("inst", i); } }
+                }
+            }
+        }
+
+        // --- Ampli / corps de l'instrument
+        Panel {
+            title: S.v.inst > 0.5 ? "SON ACOUSTIQUE" : "AMPLI";
             HorizontalLayout {
                 spacing: 4px;
-                VerticalLayout {
+                if S.v.inst < 0.5: VerticalLayout {
                     spacing: 4px;
                     padding-right: 10px;
                     for name[i] in ["Clean", "Crunch", "Lead", "Metal"]: Rectangle {
@@ -229,13 +249,14 @@ export component AppWindow inherits Window {
                         TouchArea { clicked => { S.edit("amp_model", i); } }
                     }
                 }
-                Knob { label: "Gain"; value: S.v.amp-gain; changed(x) => { S.edit("amp_gain", x); } }
+                if S.v.inst < 0.5: Knob { label: "Gain"; value: S.v.amp-gain; changed(x) => { S.edit("amp_gain", x); } }
+                if S.v.inst > 0.5: Knob { label: "Corps"; value: S.v.body; changed(x) => { S.edit("body", x); } }
                 Knob { label: "Basses"; value: S.v.bass; changed(x) => { S.edit("bass", x); } }
                 Knob { label: "Médiums"; value: S.v.mid; changed(x) => { S.edit("mid", x); } }
                 Knob { label: "Aigus"; value: S.v.treble; changed(x) => { S.edit("treble", x); } }
                 Knob { label: "Présence"; value: S.v.presence; changed(x) => { S.edit("presence", x); } }
                 Knob { label: "Master"; value: S.v.master; changed(x) => { S.edit("master", x); } }
-                VerticalLayout {
+                if S.v.inst < 0.5: VerticalLayout {
                     alignment: center;
                     padding-left: 10px;
                     Toggle { text: "BAFFLE"; value: S.v.cab-on; changed(x) => { S.edit("cab_on", x); } }

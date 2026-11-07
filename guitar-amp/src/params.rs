@@ -59,6 +59,7 @@ params! {
     gate_on = 1.0, gate_th = 3.0,
     od_on = 0.0, od_drive = 5.0, od_tone = 5.0, od_level = 5.0,
     ch_on = 0.0, ch_rate = 3.0, ch_depth = 5.0, ch_mix = 5.0,
+    inst = 0.0, body = 5.0,
     amp_model = 1.0, amp_gain = 5.0, bass = 5.0, mid = 5.0, treble = 5.0, presence = 5.0, master = 5.0, cab_on = 1.0,
     dl_on = 0.0, dl_time = 4.0, dl_fb = 3.0, dl_mix = 3.0,
     rv_on = 0.0, rv_size = 4.0, rv_mix = 3.0,

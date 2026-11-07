@@ -38,6 +38,11 @@ fn factory_presets() -> Vec<Preset> {
         mk("Blues (crunch léger)", &[("amp_model", 1.0), ("amp_gain", 4.0), ("bass", 5.0), ("mid", 6.5), ("treble", 5.5), ("presence", 4.5), ("od_on", 1.0), ("od_drive", 3.0), ("od_tone", 5.0), ("od_level", 6.0), ("rv_on", 1.0), ("rv_mix", 2.5)]),
         mk("Rock (crunch)", &[("amp_model", 1.0), ("amp_gain", 7.0), ("bass", 5.5), ("mid", 6.0), ("treble", 6.0), ("presence", 5.5), ("dl_on", 1.0), ("dl_time", 3.5), ("dl_mix", 2.0)]),
         mk("Solo (lead)", &[("amp_model", 2.0), ("amp_gain", 6.5), ("bass", 4.5), ("mid", 7.0), ("treble", 5.5), ("presence", 5.5), ("dl_on", 1.0), ("dl_time", 4.0), ("dl_fb", 3.5), ("dl_mix", 3.0), ("rv_on", 1.0), ("rv_mix", 3.0)]),
+        mk("Folk acoustique", &[("inst", 2.0), ("body", 5.0), ("treble", 5.5), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 3.0), ("rv_mix", 2.0)]),
+        mk("Classique (nylon)", &[("inst", 1.0), ("body", 5.5), ("treble", 4.5), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 4.0), ("rv_mix", 2.5)]),
+        mk("Country jumbo", &[("inst", 3.0), ("body", 6.0), ("bass", 6.0), ("treble", 6.0), ("gate_on", 0.0), ("dl_on", 1.0), ("dl_time", 1.0), ("dl_fb", 1.0), ("dl_mix", 2.0)]),
+        mk("Ukulélé", &[("inst", 4.0), ("body", 5.0), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 2.0), ("rv_mix", 1.5)]),
+        mk("Banjo bluegrass", &[("inst", 5.0), ("body", 5.0), ("gate_on", 0.0), ("rv_on", 1.0), ("rv_size", 2.0), ("rv_mix", 1.5)]),
         mk("Gojira (metal)", &[("amp_model", 3.0), ("amp_gain", 6.5), ("bass", 6.0), ("mid", 3.5), ("treble", 6.5), ("presence", 6.0), ("od_on", 1.0), ("od_drive", 1.0), ("od_tone", 6.5), ("od_level", 8.0), ("gate_on", 1.0), ("gate_th", 5.0)]),
     ]
 }
