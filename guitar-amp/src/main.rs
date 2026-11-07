@@ -116,6 +116,8 @@ struct State {
     engine: Option<Engine>,
     recorder: Option<Recorder>,
     rec_start: Instant,
+    last_rec: Option<(Arc<Vec<f32>>, u32)>,
+    play_len: usize,
     devs_in: Vec<String>,
     devs_out: Vec<String>,
     factory: Vec<Preset>,
@@ -132,11 +134,27 @@ struct State {
 }
 
 /// (Re)démarre l'audio avec les choix actuels : au lancement, à chaque changement de réglage et en cas de périphérique perdu.
-fn start_audio(st: &mut State, sh: &Arc<Shared>, g: &S) {
+/// Termine l'enregistrement en cours : fichier WAV écrit, et copie gardée en mémoire pour la lecture.
+fn finish_recording(st: &mut State, g: &S) {
     if let Some(r) = st.recorder.take() {
-        g.set_rec_info(format!("Enregistré : {}", r.finish()).into());
+        let rate = st.engine.as_ref().map(|e| e.sample_rate).unwrap_or(48000);
+        let (path, data) = r.finish();
         g.set_recording(false);
+        if data.is_empty() {
+            g.set_rec_info("Enregistrement vide.".into());
+        } else {
+            let secs = data.len() as f32 / rate as f32;
+            st.last_rec = Some((Arc::new(data), rate));
+            g.set_has_recording(true);
+            g.set_rec_info(format!("Enregistré ({secs:.0} s) : {path}").into());
+        }
     }
+}
+
+fn start_audio(st: &mut State, sh: &Arc<Shared>, g: &S) {
+    finish_recording(st, g);
+    sh.play_on.store(false, Relaxed);
+    g.set_playing(false);
     st.engine = None; // libère les périphériques avant de les rouvrir
     sh.stream_error.store(false, Relaxed);
     sh.in_peak.set(0.0);
@@ -329,6 +347,8 @@ fn main() -> Result<(), slint::PlatformError> {
         engine: None,
         recorder: None,
         rec_start: Instant::now(),
+        last_rec: None,
+        play_len: 0,
         devs_in: ins,
         devs_out: outs,
         factory: factory_presets(),
@@ -381,9 +401,8 @@ fn main() -> Result<(), slint::PlatformError> {
             let ui = weak.upgrade().unwrap();
             let g = ui.global::<S>();
             let mut st = st.borrow_mut();
-            if let Some(r) = st.recorder.take() {
-                g.set_rec_info(format!("Enregistré : {}", r.finish()).into());
-                g.set_recording(false);
+            if st.recorder.is_some() {
+                finish_recording(&mut st, &g);
             } else if let Some(sr) = st.engine.as_ref().map(|e| e.sample_rate) {
                 let dir = st.rec_dir.clone();
                 match audio::start_recording(&sh, sr, &dir) {
@@ -429,6 +448,76 @@ fn main() -> Result<(), slint::PlatformError> {
                     start_audio(&mut st, &sh, &g);
                 }
             }
+        });
+    }
+
+    // Lecture de l'enregistrement, arrêt, boucle
+    {
+        let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
+        g.on_play_recording(move || {
+            let ui = weak.upgrade().unwrap();
+            let g = ui.global::<S>();
+            let mut st = st.borrow_mut();
+            if st.recorder.is_some() {
+                finish_recording(&mut st, &g);
+            }
+            let Some((buf, rate)) = st.last_rec.clone() else {
+                g.set_rec_info("Rien à écouter : enregistre d'abord.".into());
+                return;
+            };
+            let Some(sr) = st.engine.as_ref().map(|e| e.sample_rate) else {
+                g.set_rec_info("L'audio n'est pas démarré.".into());
+                return;
+            };
+            let data = if rate == sr { buf } else { Arc::new(audio::resample(&buf, rate, sr)) };
+            st.play_len = data.len();
+            sh.play_loop.store(g.get_loop_on(), Relaxed);
+            *sh.play_buf.lock().unwrap() = Some(data);
+            sh.play_gen.fetch_add(1, Relaxed);
+            sh.play_on.store(true, Relaxed);
+            g.set_playing(true);
+        });
+    }
+    {
+        let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
+        g.on_stop_all(move || {
+            let ui = weak.upgrade().unwrap();
+            let g = ui.global::<S>();
+            let mut st = st.borrow_mut();
+            if st.recorder.is_some() {
+                finish_recording(&mut st, &g);
+            }
+            if sh.play_on.swap(false, Relaxed) {
+                g.set_rec_info("Lecture arrêtée.".into());
+            }
+            g.set_playing(false);
+        });
+    }
+    {
+        let (sh, weak) = (shared.clone(), ui.as_weak());
+        g.on_toggle_loop(move || {
+            let g = weak.upgrade().unwrap();
+            let g = g.global::<S>();
+            let v = !g.get_loop_on();
+            g.set_loop_on(v);
+            sh.play_loop.store(v, Relaxed);
+        });
+    }
+
+    // Auto-niveau : mesure la crête de ta guitare pendant 3 s et règle l'entrée en conséquence
+    {
+        let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
+        g.on_auto_level(move || {
+            let ui = weak.upgrade().unwrap();
+            let g = ui.global::<S>();
+            let mut st = st.borrow_mut();
+            if st.engine.is_none() {
+                g.set_status("Auto-niveau : l'audio n'est pas démarré (vérifie Paramètres).".into());
+                return;
+            }
+            sh.in_hold.set(0.0);
+            st.auto = Some((Instant::now(), 0.0));
+            g.set_status("Auto-niveau : joue des accords FORT pendant 3 secondes…".into());
         });
     }
 
@@ -619,6 +708,17 @@ fn main() -> Result<(), slint::PlatformError> {
             g.set_out_level(st.out_disp.sqrt());
             g.set_beat(sh.beat.load(Relaxed) as i32);
 
+            if g.get_playing() {
+                if !sh.play_on.load(Relaxed) {
+                    g.set_playing(false);
+                    g.set_rec_info("Lecture terminée.".into());
+                } else if let Some(sr) = st.engine.as_ref().map(|e| e.sample_rate) {
+                    let pos = sh.play_pos.load(Relaxed) as usize;
+                    let (a, b) = (pos / sr as usize, st.play_len / sr as usize);
+                    let mode = if g.get_loop_on() { " (en boucle)" } else { "" };
+                    g.set_rec_info(format!("Lecture… {:02}:{:02} / {:02}:{:02}{}", a / 60, a % 60, b / 60, b % 60, mode).into());
+                }
+            }
             if st.recorder.is_some() {
                 let s = st.rec_start.elapsed().as_secs();
                 g.set_rec_info(format!("Enregistrement… {:02}:{:02}", s / 60, s % 60).into());

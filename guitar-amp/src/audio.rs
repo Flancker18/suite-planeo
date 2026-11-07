@@ -5,7 +5,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, FromSample, Sample, SampleFormat, SizedSample, Stream, StreamConfig, SupportedBufferSize};
 use crossbeam_queue::ArrayQueue;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// État partagé entre le thread audio et l'interface.
 pub struct Shared {
@@ -19,6 +19,12 @@ pub struct Shared {
     /// Mis à vrai par un flux audio en erreur (périphérique débranché...) : l'interface reconnecte.
     pub stream_error: AtomicBool,
     pub rec_on: AtomicBool,
+    /// Lecture d'un enregistrement : tampon, numéro de version (change à chaque lecture), marche/arrêt, boucle, position.
+    pub play_buf: Mutex<Option<Arc<Vec<f32>>>>,
+    pub play_gen: AtomicU32,
+    pub play_on: AtomicBool,
+    pub play_loop: AtomicBool,
+    pub play_pos: AtomicU32,
     pub tuner_q: ArrayQueue<f32>,
     pub rec_q: ArrayQueue<f32>,
 }
@@ -34,6 +40,11 @@ impl Shared {
             beat: AtomicU32::new(0),
             stream_error: AtomicBool::new(false),
             rec_on: AtomicBool::new(false),
+            play_buf: Mutex::new(None),
+            play_gen: AtomicU32::new(0),
+            play_on: AtomicBool::new(false),
+            play_loop: AtomicBool::new(false),
+            play_pos: AtomicU32::new(0),
             tuner_q: ArrayQueue::new(4096),
             rec_q: ArrayQueue::new(1 << 18),
         }
@@ -78,6 +89,54 @@ impl Resampler {
         self.frac += self.ratio;
         y
     }
+}
+
+/// Lecteur d'un enregistrement en mémoire, avec boucle.
+#[derive(Default)]
+pub struct Playback {
+    buf: Option<Arc<Vec<f32>>>,
+    pub pos: usize,
+}
+
+impl Playback {
+    pub fn load(&mut self, buf: Option<Arc<Vec<f32>>>) {
+        self.buf = buf;
+        self.pos = 0;
+    }
+    /// Échantillon suivant ; None quand c'est fini (jamais en boucle).
+    #[inline]
+    pub fn next(&mut self, looping: bool) -> Option<f32> {
+        let b = self.buf.as_ref()?;
+        if b.is_empty() {
+            return None;
+        }
+        if self.pos >= b.len() {
+            if looping {
+                self.pos = 0;
+            } else {
+                return None;
+            }
+        }
+        let v = b[self.pos];
+        self.pos += 1;
+        Some(v)
+    }
+}
+
+/// Change la fréquence d'échantillonnage d'un enregistrement (interpolation linéaire).
+pub fn resample(buf: &[f32], from: u32, to: u32) -> Vec<f32> {
+    let mut r = Resampler::new(from as f32 / to as f32);
+    let n = (buf.len() as f64 * to as f64 / from as f64) as usize;
+    let mut i = 0usize;
+    (0..n)
+        .map(|_| {
+            r.next(|| {
+                let v = buf.get(i).copied().unwrap_or(0.0);
+                i += 1;
+                v
+            })
+        })
+        .collect()
 }
 
 /// Noms des périphériques que Windows utilise « par défaut » (entrée, sortie).
@@ -159,6 +218,8 @@ where
     let shared_err = shared.clone();
     let mut chain = Chain::new(cfg.sample_rate.0 as f32);
     let mut resampler = Resampler::new(ratio);
+    let mut playback = Playback::default();
+    let mut gen_seen = 0u32;
     dev.build_output_stream(
         cfg,
         move |data: &mut [T], _| {
@@ -168,6 +229,16 @@ where
             while link.len() > max_keep {
                 link.pop();
             }
+            // Lecture d'un enregistrement : mélangée au jeu en direct (on peut jouer par-dessus une boucle)
+            let g = shared.play_gen.load(Relaxed);
+            if g != gen_seen {
+                if let Ok(m) = shared.play_buf.try_lock() {
+                    playback.load(m.clone());
+                    gen_seen = g;
+                }
+            }
+            let play_on = shared.play_on.load(Relaxed);
+            let play_loop = shared.play_loop.load(Relaxed);
             let recording = shared.rec_on.load(Relaxed);
             let (mut in_pk, mut out_pk) = (0.0f32, 0.0f32);
             for frame in data.chunks_mut(ch) {
@@ -182,7 +253,18 @@ where
                 if let Some(b) = beat {
                     shared.beat.store(b, Relaxed);
                 }
-                let mut o = if p.mute > 0.5 { 0.0 } else { y + click };
+                let pb = if play_on {
+                    match playback.next(play_loop) {
+                        Some(v) => v,
+                        None => {
+                            shared.play_on.store(false, Relaxed);
+                            0.0
+                        }
+                    }
+                } else {
+                    0.0
+                };
+                let mut o = if p.mute > 0.5 { 0.0 } else { y + click + pb };
                 if o.abs() > 0.9 {
                     o = o.signum() * (0.9 + 0.1 * ((o.abs() - 0.9) / 0.1).tanh());
                 }
@@ -194,6 +276,7 @@ where
                     *s = T::from_sample(o);
                 }
             }
+            shared.play_pos.store(playback.pos as u32, Relaxed);
             shared.in_peak.set(in_pk);
             shared.out_peak.set(out_pk);
             shared.in_hold.set(shared.in_hold.get().max(in_pk));
@@ -340,7 +423,7 @@ pub fn start(shared: &Arc<Shared>, in_name: Option<&str>, out_name: Option<&str>
 pub struct Recorder {
     shared: Arc<Shared>,
     stop: Arc<AtomicBool>,
-    handle: std::thread::JoinHandle<()>,
+    handle: std::thread::JoinHandle<Vec<f32>>,
     pub path: String,
 }
 
@@ -354,24 +437,33 @@ pub fn start_recording(shared: &Arc<Shared>, sample_rate: u32, dir: &std::path::
     shared.rec_on.store(true, Relaxed);
     let stop = Arc::new(AtomicBool::new(false));
     let (s2, st2) = (shared.clone(), stop.clone());
-    let handle = std::thread::spawn(move || loop {
-        while let Some(x) = s2.rec_q.pop() {
-            let _ = writer.write_sample(x);
+    let cap = sample_rate as usize * 600; // 10 minutes gardées en mémoire pour la lecture (le fichier, lui, n'a pas de limite)
+    let handle = std::thread::spawn(move || {
+        let mut kept: Vec<f32> = Vec::new();
+        loop {
+            while let Some(x) = s2.rec_q.pop() {
+                let _ = writer.write_sample(x);
+                if kept.len() < cap {
+                    kept.push(x);
+                }
+            }
+            if st2.load(Relaxed) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        if st2.load(Relaxed) {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        kept
     });
     Ok(Recorder { shared: shared.clone(), stop, handle, path })
 }
 
 impl Recorder {
-    pub fn finish(self) -> String {
+    /// Termine l'enregistrement : (chemin du fichier WAV, échantillons gardés pour la lecture).
+    pub fn finish(self) -> (String, Vec<f32>) {
         self.shared.rec_on.store(false, Relaxed);
         self.stop.store(true, Relaxed);
-        let _ = self.handle.join();
-        self.path
+        let kept = self.handle.join().unwrap_or_default();
+        (self.path, kept)
     }
 }
 
@@ -423,6 +515,29 @@ mod tests {
         assert!((crossings as i32 - 440).abs() <= 2, "{crossings} passages par zéro");
         let peak = out.iter().fold(0.0f32, |a, v| a.max(v.abs()));
         assert!(peak > 0.48 && peak < 0.51, "pic {peak}");
+    }
+
+    #[test]
+    fn playback_plays_once_or_loops() {
+        let data = Arc::new(vec![1.0f32, 2.0, 3.0]);
+        let mut p = Playback::default();
+        assert_eq!(p.next(false), None); // rien de chargé
+        p.load(Some(data.clone()));
+        assert_eq!([p.next(false), p.next(false), p.next(false), p.next(false)], [Some(1.0), Some(2.0), Some(3.0), None]);
+        p.load(Some(data));
+        let looped: Vec<f32> = (0..7).filter_map(|_| p.next(true)).collect();
+        assert_eq!(looped, vec![1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0]);
+        p.load(Some(Arc::new(vec![])));
+        assert_eq!(p.next(true), None);
+    }
+
+    #[test]
+    fn resample_changes_length_and_keeps_pitch() {
+        let sine: Vec<f32> = (0..44100).map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 44100.0).sin()).collect();
+        let out = resample(&sine, 44100, 48000);
+        assert!((out.len() as i32 - 48000).abs() <= 1);
+        let crossings = out.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+        assert!((crossings as i32 - 440).abs() <= 2);
     }
 
     #[test]

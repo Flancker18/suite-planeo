@@ -31,12 +31,20 @@ export global S {
     in-out property <int> buffer-sel: 1;
     in-out property <bool> settings-open;
     in-out property <int> theme;
+    // Thème Arc-en-ciel : `phase` avance de 0 à 6 ; chaque couleur reste vive, puis passe vite à la suivante
+    in-out property <float> phase;
+    property <[color]> palette: [#ff7eb6, #ff2bd6, #39e75f, #2f7bff, #ff3b3b, #ffe14a];
+    out property <int> seg: Math.floor(phase);
+    out property <color> rainbow: palette[seg - 6 * Math.floor(seg / 6)].mix(palette[(seg + 1) - 6 * Math.floor((seg + 1) / 6)], 1 - Math.clamp((phase - seg - 0.55) / 0.45, 0, 1));
     in-out property <[string]> presets;
     in-out property <int> in-sel;
     in-out property <int> out-sel;
     in-out property <int> preset-sel: -1;
     in-out property <bool> running;
     in-out property <bool> recording;
+    in-out property <bool> playing;
+    in-out property <bool> has-recording;
+    in-out property <bool> loop-on;
     // tablature
     in-out property <bool> tab-shown;
     in-out property <bool> tab-playing;
@@ -64,6 +72,9 @@ export global S {
     callback settings-changed();
     callback theme-changed();
     callback toggle-rec();
+    callback play-recording();
+    callback stop-all();
+    callback toggle-loop();
     callback pick-rec-dir();
     callback pick-in(int);
     callback pick-out(int);
@@ -71,32 +82,32 @@ export global S {
     callback save-preset(string);
 }
 
-// Thèmes : 0 = Ambre (orange et bois), 1 = Chrome (noir et aluminium), 2 = Rock (noir et rouge)
+// Thèmes : 0 Ambre, 1 Chrome, 2 Rock, 3 Vert, 4 Bleu, 5 Arc-en-ciel (les couleurs défilent toutes seules)
 export global T {
-    out property <color> accent: S.theme == 1 ? #cfd6dd : S.theme == 2 ? #e5322d : #ff9a3c;
-    out property <color> accent2: S.theme == 1 ? #eef2f6 : S.theme == 2 ? #ff6b5f : #ffb866;
-    out property <color> on-accent: S.theme == 1 ? #101214 : S.theme == 2 ? #ffffff : #1b1612;
-    out property <color> text: S.theme == 1 ? #eceff2 : S.theme == 2 ? #f3e9e9 : #f2e6d0;
-    out property <color> text2: S.theme == 1 ? #c3cad1 : S.theme == 2 ? #d9c6c6 : #d8c7ae;
-    out property <color> dim: S.theme == 1 ? #9aa2aa : S.theme == 2 ? #b39a9a : #b9a88f;
-    out property <color> faint: S.theme == 1 ? #737b83 : S.theme == 2 ? #7d6666 : #8f7f6a;
-    out property <color> line: S.theme == 1 ? #5a6169 : S.theme == 2 ? #5a3a3a : #6b5a48;
-    out property <color> btn: S.theme == 1 ? #2b2e33 : S.theme == 2 ? #2e1c1c : #3a322b;
-    out property <color> dark: S.theme == 1 ? #16181b : S.theme == 2 ? #1c1111 : #2a2420;
-    out property <color> panel: S.theme == 1 ? #1a1c20 : S.theme == 2 ? #170e0e : #211c18;
-    out property <color> panel-border: S.theme == 1 ? #4b5158 : S.theme == 2 ? #4a1f1f : #3d332b;
-    out property <color> canvas: S.theme == 1 ? #0f1113 : S.theme == 2 ? #0e0808 : #17130f;
-    out property <color> bg: S.theme == 1 ? #0c0d0f : S.theme == 2 ? #090606 : #14110f;
-    out property <color> sp0: S.theme == 1 ? #08090a : S.theme == 2 ? #070505 : #0b0907;
-    out property <color> sp1: S.theme == 1 ? #17191c : S.theme == 2 ? #170f0f : #1c1713;
-    out property <color> sp2: S.theme == 1 ? #1d2024 : S.theme == 2 ? #1d1212 : #211b16;
-    out property <color> sp-edge: S.theme == 1 ? #a3abb3 : S.theme == 2 ? #7a2a2a : #4a3d31;
-    out property <color> sp-edge2: S.theme == 1 ? #6f767d : S.theme == 2 ? #4a1f1f : #3a2f26;
-    out property <color> sp-edge3: S.theme == 1 ? #3d4248 : S.theme == 2 ? #2e1616 : #2e261f;
-    out property <color> trim: S.theme == 1 ? #cfd5db : S.theme == 2 ? #9c1f1f : #b8893a;
-    out property <color> grille: S.theme == 1 ? #4f555c : S.theme == 2 ? #141414 : #2b231c;
-    out property <color> edge-dark: S.theme == 1 ? #06070a : S.theme == 2 ? #040303 : #0e0b09;
-    out property <color> mesh: S.theme == 1 ? #00000066 : S.theme == 2 ? #ffffff16 : #00000066;
+    out property <color> accent: [#ff9a3c, #cfd6dd, #e5322d, #3ddc6c, #3b8cff, S.rainbow][S.theme];
+    out property <color> accent2: [#ffb866, #eef2f6, #ff6b5f, #7dffa0, #7db4ff, S.rainbow.mix(#ffffff, 0.55)][S.theme];
+    out property <color> on-accent: [#1b1612, #101214, #ffffff, #07210f, #ffffff, #0b0610][S.theme];
+    out property <color> text: [#f2e6d0, #eceff2, #f3e9e9, #e6f5ea, #e8eefb, #f3eafd][S.theme];
+    out property <color> text2: [#d8c7ae, #c3cad1, #d9c6c6, #bfdcc7, #bccbe8, #d6c6ee][S.theme];
+    out property <color> dim: [#b9a88f, #9aa2aa, #b39a9a, #8fb59a, #8fa3c8, #a894c8][S.theme];
+    out property <color> faint: [#8f7f6a, #737b83, #7d6666, #5f8268, #62779c, #7a6a96][S.theme];
+    out property <color> line: [#6b5a48, #5a6169, #5a3a3a, #3c6a49, #3a527f, #5a4a7a][S.theme];
+    out property <color> btn: [#3a322b, #2b2e33, #2e1c1c, #1b2c21, #1a2740, #241a36][S.theme];
+    out property <color> dark: [#2a2420, #16181b, #1c1111, #0c1710, #0d1424, #150f22][S.theme];
+    out property <color> panel: [#211c18, #1a1c20, #170e0e, #101a13, #0f1623, #150f1f][S.theme];
+    out property <color> panel-border: [#3d332b, #4b5158, #4a1f1f, #1f4a2c, #1d3a66, #3a2a5c][S.theme];
+    out property <color> canvas: [#17130f, #0f1113, #0e0808, #0a120d, #0a101c, #0e0916][S.theme];
+    out property <color> bg: [#14110f, #0c0d0f, #090606, #0a100c, #090c12, #0c0912][S.theme];
+    out property <color> sp0: [#0b0907, #08090a, #070505, #060c08, #060910, #07040b][S.theme];
+    out property <color> sp1: [#1c1713, #17191c, #170f0f, #0f1a13, #0e1522, #130d1c][S.theme];
+    out property <color> sp2: [#211b16, #1d2024, #1d1212, #13211a, #131c2e, #1a1226][S.theme];
+    out property <color> sp-edge: [#4a3d31, #a3abb3, #7a2a2a, #2f8a4c, #3b6fc4, S.rainbow][S.theme];
+    out property <color> sp-edge2: [#3a2f26, #6f767d, #4a1f1f, #1f5a33, #274a86, S.rainbow.mix(#000000, 0.5)][S.theme];
+    out property <color> sp-edge3: [#2e261f, #3d4248, #2e1616, #143a22, #172c52, S.rainbow.mix(#000000, 0.3)][S.theme];
+    out property <color> trim: [#b8893a, #cfd5db, #9c1f1f, #3ddc6c, #3b8cff, S.rainbow][S.theme];
+    out property <color> grille: [#2b231c, #4f555c, #141414, #0f1712, #0e1420, #120c1a][S.theme];
+    out property <color> edge-dark: [#0e0b09, #06070a, #040303, #040806, #04060b, #050308][S.theme];
+    out property <color> mesh: [#00000066, #00000066, #ffffff16, #3ddc6c18, #3b8cff18, #ffffff14][S.theme];
 }
 
 component Knob inherits Rectangle {
@@ -528,23 +539,15 @@ export component AppWindow inherits Window {
                 title: "ENREGISTREMENT";
                 VerticalLayout {
                     spacing: 6px;
-                    width: 210px;
-                    Rectangle {
-                        height: 30px;
-                        border-radius: 5px;
-                        background: S.recording ? #e5484d : T.btn;
-                        Text { text: S.recording ? "■ Stop" : "● Enregistrer"; color: white; font-weight: 700; }
-                        TouchArea { clicked => { S.toggle-rec(); } }
+                    width: 235px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Btn { text: "● Enreg."; accent: S.recording; min-width: 78px; clicked => { S.toggle-rec(); } }
+                        Btn { text: "▶ Lecture"; accent: S.playing; min-width: 78px; clicked => { S.play-recording(); } }
+                        Btn { text: "■ Stop"; min-width: 62px; clicked => { S.stop-all(); } }
                     }
+                    Btn { text: S.loop-on ? "⟳ Boucle : OUI" : "⟳ Boucle : non"; accent: S.loop-on; clicked => { S.toggle-loop(); } }
                     Text { text: S.rec-info; color: T.faint; font-size: 11px; wrap: word-wrap; }
-                    Text { text: S.rec-dir; color: T.dim; font-size: 10px; wrap: word-wrap; }
-                    Rectangle {
-                        height: 24px;
-                        border-radius: 5px;
-                        background: S.recording ? T.dark : T.btn;
-                        Text { text: "Choisir le dossier…"; color: S.recording ? T.line : T.text; font-size: 12px; }
-                        TouchArea { enabled: !S.recording; clicked => { S.pick-rec-dir(); } }
-                    }
                 }
             }
             Panel {
@@ -576,6 +579,18 @@ export component AppWindow inherits Window {
             if S.tab-shown: TabView { }
         }
     }
+    // Animation du thème Arc-en-ciel (≈ 15 s pour faire le tour des 6 couleurs)
+    Timer {
+        interval: 50ms;
+        running: S.theme == 5;
+        triggered => {
+            S.phase = S.phase + 0.02;
+            if (S.phase >= 6) {
+                S.phase = S.phase - 6;
+            }
+        }
+    }
+
     // --- Menu Paramètres (périphériques audio)
     if S.settings-open: Rectangle {
         x: 0;
@@ -586,7 +601,7 @@ export component AppWindow inherits Window {
         TouchArea { }
         Rectangle {
             width: min(600px, parent.width - 40px);
-            height: 550px;
+            height: 640px;
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             background: T.panel;
@@ -614,9 +629,18 @@ export component AppWindow inherits Window {
                     Btn { text: "Ambre"; accent: S.theme == 0; clicked => { S.theme = 0; S.theme-changed(); } }
                     Btn { text: "Chrome"; accent: S.theme == 1; clicked => { S.theme = 1; S.theme-changed(); } }
                     Btn { text: "Rock"; accent: S.theme == 2; clicked => { S.theme = 2; S.theme-changed(); } }
+                    Btn { text: "Vert"; accent: S.theme == 3; clicked => { S.theme = 3; S.theme-changed(); } }
+                    Btn { text: "Bleu"; accent: S.theme == 4; clicked => { S.theme = 4; S.theme-changed(); } }
+                    Btn { text: "Arc-en-ciel"; accent: S.theme == 5; min-width: 96px; clicked => { S.theme = 5; S.theme-changed(); } }
                 }
                 Text { text: "Taille du buffer (plus petit = moins de retard, mais risque de craquements)"; color: T.text2; font-size: 12px; wrap: word-wrap; }
                 ComboBox { model: ["64", "128", "256", "512"]; current-index <=> S.buffer-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Dossier des enregistrements"; color: T.text2; font-size: 12px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: S.rec-dir; color: T.dim; font-size: 11px; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+                    Btn { text: "Choisir…"; min-width: 90px; clicked => { S.pick-rec-dir(); } }
+                }
                 Text {
                     text: "Les changements s'appliquent tout de suite et sont mémorisés. Un câble guitare USB est repéré tout seul, et le son suit si tu changes de casque.";
                     color: T.faint;
