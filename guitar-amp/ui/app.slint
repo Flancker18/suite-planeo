@@ -30,6 +30,7 @@ export global S {
     in-out property <int> out2-sel;
     in-out property <int> buffer-sel: 1;
     in-out property <bool> settings-open;
+    in-out property <int> theme;
     in-out property <[string]> presets;
     in-out property <int> in-sel;
     in-out property <int> out-sel;
@@ -60,14 +61,42 @@ export global S {
     callback edit(string, float);
     callback refresh-devices();
     callback auto-level();
-    callback start();
-    callback stop();
+    callback settings-changed();
+    callback theme-changed();
     callback toggle-rec();
     callback pick-rec-dir();
     callback pick-in(int);
     callback pick-out(int);
     callback apply-preset(int);
     callback save-preset(string);
+}
+
+// Thèmes : 0 = Ambre (orange et bois), 1 = Chrome (noir et aluminium), 2 = Rock (noir et rouge)
+export global T {
+    out property <color> accent: S.theme == 1 ? #cfd6dd : S.theme == 2 ? #e5322d : #ff9a3c;
+    out property <color> accent2: S.theme == 1 ? #eef2f6 : S.theme == 2 ? #ff6b5f : #ffb866;
+    out property <color> on-accent: S.theme == 1 ? #101214 : S.theme == 2 ? #ffffff : #1b1612;
+    out property <color> text: S.theme == 1 ? #eceff2 : S.theme == 2 ? #f3e9e9 : #f2e6d0;
+    out property <color> text2: S.theme == 1 ? #c3cad1 : S.theme == 2 ? #d9c6c6 : #d8c7ae;
+    out property <color> dim: S.theme == 1 ? #9aa2aa : S.theme == 2 ? #b39a9a : #b9a88f;
+    out property <color> faint: S.theme == 1 ? #737b83 : S.theme == 2 ? #7d6666 : #8f7f6a;
+    out property <color> line: S.theme == 1 ? #5a6169 : S.theme == 2 ? #5a3a3a : #6b5a48;
+    out property <color> btn: S.theme == 1 ? #2b2e33 : S.theme == 2 ? #2e1c1c : #3a322b;
+    out property <color> dark: S.theme == 1 ? #16181b : S.theme == 2 ? #1c1111 : #2a2420;
+    out property <color> panel: S.theme == 1 ? #1a1c20 : S.theme == 2 ? #170e0e : #211c18;
+    out property <color> panel-border: S.theme == 1 ? #4b5158 : S.theme == 2 ? #4a1f1f : #3d332b;
+    out property <color> canvas: S.theme == 1 ? #0f1113 : S.theme == 2 ? #0e0808 : #17130f;
+    out property <color> bg: S.theme == 1 ? #0c0d0f : S.theme == 2 ? #090606 : #14110f;
+    out property <color> sp0: S.theme == 1 ? #08090a : S.theme == 2 ? #070505 : #0b0907;
+    out property <color> sp1: S.theme == 1 ? #17191c : S.theme == 2 ? #170f0f : #1c1713;
+    out property <color> sp2: S.theme == 1 ? #1d2024 : S.theme == 2 ? #1d1212 : #211b16;
+    out property <color> sp-edge: S.theme == 1 ? #a3abb3 : S.theme == 2 ? #7a2a2a : #4a3d31;
+    out property <color> sp-edge2: S.theme == 1 ? #6f767d : S.theme == 2 ? #4a1f1f : #3a2f26;
+    out property <color> sp-edge3: S.theme == 1 ? #3d4248 : S.theme == 2 ? #2e1616 : #2e261f;
+    out property <color> trim: S.theme == 1 ? #cfd5db : S.theme == 2 ? #9c1f1f : #b8893a;
+    out property <color> grille: S.theme == 1 ? #4f555c : S.theme == 2 ? #141414 : #2b231c;
+    out property <color> edge-dark: S.theme == 1 ? #06070a : S.theme == 2 ? #040303 : #0e0b09;
+    out property <color> mesh: S.theme == 1 ? #00000066 : S.theme == 2 ? #ffffff16 : #00000066;
 }
 
 component Knob inherits Rectangle {
@@ -86,15 +115,15 @@ component Knob inherits Rectangle {
             width: 50px;
             height: 50px;
             border-radius: 25px;
-            background: #2a2420;
+            background: T.dark;
             border-width: 2px;
-            border-color: #6b5a48;
+            border-color: T.line;
             Path {
                 width: 100%;
                 height: 100%;
                 viewbox-width: 50;
                 viewbox-height: 50;
-                stroke: #ff9a3c;
+                stroke: T.accent;
                 stroke-width: 4px;
                 stroke-line-cap: round;
                 property <angle> a: -135deg + (root.value - root.minimum) / (root.maximum - root.minimum) * 270deg;
@@ -116,8 +145,8 @@ component Knob inherits Rectangle {
                 }
             }
         }
-        Text { text: root.label; color: #d8c7ae; font-size: 12px; horizontal-alignment: center; }
-        Text { text: Math.round(root.value * 10) / 10; color: #8f7f6a; font-size: 10px; horizontal-alignment: center; }
+        Text { text: root.label; color: T.text2; font-size: 12px; horizontal-alignment: center; }
+        Text { text: Math.round(root.value * 10) / 10; color: T.faint; font-size: 10px; horizontal-alignment: center; }
     }
 }
 
@@ -128,8 +157,8 @@ component Toggle inherits Rectangle {
     height: 26px;
     min-width: 56px;
     border-radius: 4px;
-    background: root.value > 0.5 ? #ff9a3c : #3a322b;
-    Text { text: root.text; color: root.value > 0.5 ? #1b1612 : #b9a88f; font-size: 12px; font-weight: 700; }
+    background: root.value > 0.5 ? T.accent : T.btn;
+    Text { text: root.text; color: root.value > 0.5 ? T.on-accent : T.dim; font-size: 12px; font-weight: 700; }
     TouchArea { clicked => { root.changed(root.value > 0.5 ? 0 : 1); } }
 }
 
@@ -137,16 +166,16 @@ component Panel inherits Rectangle {
     in property <string> title;
     in property <float> on-value: -1;
     callback toggled(float);
-    background: #211c18;
+    background: T.panel;
     border-radius: 8px;
     border-width: 1px;
-    border-color: #3d332b;
+    border-color: T.panel-border;
     VerticalLayout {
         padding: 10px;
         spacing: 6px;
         HorizontalLayout {
             spacing: 8px;
-            Text { text: root.title; color: #ffb866; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+            Text { text: root.title; color: T.accent2; font-size: 14px; font-weight: 700; vertical-alignment: center; }
             Rectangle { }
             if root.on-value >= 0: Toggle { text: root.on-value > 0.5 ? "ON" : "OFF"; value: root.on-value; changed(x) => { root.toggled(x); } }
         }
@@ -160,9 +189,9 @@ component Meter inherits Rectangle {
     height: 14px;
     HorizontalLayout {
         spacing: 6px;
-        Text { text: root.label; color: #b9a88f; font-size: 11px; width: 34px; vertical-alignment: center; }
+        Text { text: root.label; color: T.dim; font-size: 11px; width: 34px; vertical-alignment: center; }
         Rectangle {
-            background: #2a2420;
+            background: T.dark;
             border-radius: 3px;
             Rectangle {
                 x: 0;
@@ -182,8 +211,8 @@ component Btn inherits Rectangle {
     height: 26px;
     min-width: 34px;
     border-radius: 4px;
-    background: root.accent ? #ff9a3c : #3a322b;
-    Text { text: root.text; color: root.accent ? #1b1612 : #f2e6d0; font-size: 12px; font-weight: 700; }
+    background: root.accent ? T.accent : T.btn;
+    Text { text: root.text; color: root.accent ? T.on-accent : T.text; font-size: 12px; font-weight: 700; }
     TouchArea { clicked => { root.clicked(); } }
 }
 
@@ -192,37 +221,37 @@ component Speaker inherits Rectangle {
     width: 200px;
     height: self.width;
     border-radius: self.width / 2;
-    background: #0b0907;
+    background: T.sp0;
     border-width: 4px;
-    border-color: #4a3d31;
-    Rectangle { width: parent.width * 0.84; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #1c1713; border-width: 2px; border-color: #3a2f26; }
-    Rectangle { width: parent.width * 0.66; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #211b16; border-width: 1px; border-color: #2e261f; }
-    Rectangle { width: parent.width * 0.48; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #1c1713; border-width: 1px; border-color: #2e261f; }
-    Rectangle { width: parent.width * 0.26; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: #0b0907; border-width: 3px; border-color: #4a3d31; }
+    border-color: T.sp-edge;
+    Rectangle { width: parent.width * 0.84; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp1; border-width: 2px; border-color: T.sp-edge2; }
+    Rectangle { width: parent.width * 0.66; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp2; border-width: 1px; border-color: T.sp-edge3; }
+    Rectangle { width: parent.width * 0.48; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp1; border-width: 1px; border-color: T.sp-edge3; }
+    Rectangle { width: parent.width * 0.26; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp0; border-width: 3px; border-color: T.sp-edge; }
 }
 
 // Façade d'ampli : deux haut-parleurs sous le tissu de la grille, liseré doré, plaque au nom de l'appli.
 component AmpGrille inherits Rectangle {
     property <length> d: min(self.height - 40px, 230px);
-    background: #2b231c;
+    background: T.grille;
     border-radius: 10px;
     border-width: 4px;
-    border-color: #0e0b09;
+    border-color: T.edge-dark;
     clip: true;
     Speaker { width: root.d; x: parent.width * 0.27 - self.width / 2; y: (parent.height - self.height) / 2; }
     Speaker { width: root.d; x: parent.width * 0.73 - self.width / 2; y: (parent.height - self.height) / 2; }
     // tissu de la grille (par-dessus les haut-parleurs, légèrement transparent)
-    for i in 260: Rectangle { x: i * 5px; width: 1px; background: #00000066; }
-    for j in 80: Rectangle { y: j * 5px; height: 1px; background: #00000066; }
-    Rectangle { x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px; border-radius: 6px; border-width: 2px; border-color: #b8893a; }
+    for i in 260: Rectangle { x: i * 5px; width: 1px; background: T.mesh; }
+    for j in 80: Rectangle { y: j * 5px; height: 1px; background: T.mesh; }
+    Rectangle { x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px; border-radius: 6px; border-width: 2px; border-color: T.trim; }
     Rectangle {
         width: 200px;
         height: 38px;
-        background: #14110f;
+        background: T.bg;
         border-radius: 6px;
         border-width: 2px;
-        border-color: #ff9a3c;
-        Text { text: "GUITAR AMP"; color: #ff9a3c; font-size: 18px; font-weight: 800; }
+        border-color: T.accent;
+        Text { text: "GUITAR AMP"; color: T.accent; font-size: 18px; font-weight: 800; }
     }
     Btn {
         width: 190px;
@@ -234,22 +263,22 @@ component AmpGrille inherits Rectangle {
 }
 
 component TabView inherits Rectangle {
-    background: #211c18;
+    background: T.panel;
     border-radius: 8px;
     border-width: 1px;
-    border-color: #3d332b;
+    border-color: T.panel-border;
     VerticalLayout {
         padding: 10px;
         spacing: 6px;
         HorizontalLayout {
             spacing: 6px;
             height: 28px;
-            Text { text: S.tab-title; color: #ffb866; font-size: 14px; font-weight: 700; vertical-alignment: center; overflow: elide; max-width: 320px; }
+            Text { text: S.tab-title; color: T.accent2; font-size: 14px; font-weight: 700; vertical-alignment: center; overflow: elide; max-width: 320px; }
             ComboBox { model: S.tab-tracks; current-index <=> S.tab-track-sel; selected(i) => { S.tab-pick-track(S.tab-track-sel); } }
             Btn { text: S.tab-playing ? "⏸ Pause" : "▶ Lecture"; accent: !S.tab-playing; min-width: 84px; clicked => { S.tab-toggle-play(); } }
             Btn { text: "⏮"; clicked => { S.tab-restart(); } }
             Btn { text: "◀"; clicked => { S.tab-step(-1); } }
-            Text { text: S.tab-measure; color: #b9a88f; vertical-alignment: center; min-width: 90px; horizontal-alignment: center; }
+            Text { text: S.tab-measure; color: T.dim; vertical-alignment: center; min-width: 90px; horizontal-alignment: center; }
             Btn { text: "▶"; clicked => { S.tab-step(1); } }
             Rectangle { }
             Btn { text: "Ouvrir…"; clicked => { S.tab-load(); } }
@@ -259,40 +288,40 @@ component TabView inherits Rectangle {
             spacing: 6px;
             height: 26px;
             Btn { text: S.tab-wait ? "✔ J'attends ma note" : "Attendre ma note"; accent: S.tab-wait; min-width: 160px; clicked => { S.tab-toggle-wait(); } }
-            Text { text: S.tab-wait-text; color: #ffb866; font-weight: 700; vertical-alignment: center; }
+            Text { text: S.tab-wait-text; color: T.accent2; font-weight: 700; vertical-alignment: center; }
             Rectangle { }
-            Text { text: "Vitesse"; color: #b9a88f; vertical-alignment: center; }
+            Text { text: "Vitesse"; color: T.dim; vertical-alignment: center; }
             Btn { text: "−"; clicked => { S.tab-set-speed(S.tab-speed - 10); } }
-            Text { text: Math.round(S.tab-speed) + " %"; color: #f2e6d0; vertical-alignment: center; min-width: 44px; horizontal-alignment: center; }
+            Text { text: Math.round(S.tab-speed) + " %"; color: T.text; vertical-alignment: center; min-width: 44px; horizontal-alignment: center; }
             Btn { text: "+"; clicked => { S.tab-set-speed(S.tab-speed + 10); } }
         }
         Rectangle {
-            background: #17130f;
+            background: T.canvas;
             border-radius: 6px;
             clip: true;
             for s in S.tab-strings: Rectangle {
                 y: parent.height / (S.tab-strings + 1) * (s + 1);
                 height: 1px;
-                background: #6b5a48;
+                background: T.line;
             }
             for bx in S.tab-bars: Rectangle {
                 x: parent.width * bx;
                 y: parent.height / (S.tab-strings + 1) * 0.7;
                 width: 2px;
                 height: parent.height / (S.tab-strings + 1) * (S.tab-strings - 1 + 0.6);
-                background: #8f7f6a;
+                background: T.faint;
             }
-            Rectangle { x: parent.width * 0.125 - 1px; width: 2px; background: #ff9a3c; }
+            Rectangle { x: parent.width * 0.125 - 1px; width: 2px; background: T.accent; }
             for n in S.tab-notes: Rectangle {
                 x: parent.width * n.x - 10px;
                 y: parent.height / (S.tab-strings + 1) * (n.string + 1) - 10px;
                 width: 20px;
                 height: 20px;
                 border-radius: 10px;
-                background: n.state == 1 ? #ff9a3c : #17130f;
+                background: n.state == 1 ? T.accent : T.canvas;
                 Text {
                     text: n.fret;
-                    color: n.state == 1 ? #1b1612 : (n.state == 0 ? #6b5a48 : #f2e6d0);
+                    color: n.state == 1 ? T.on-accent : (n.state == 0 ? T.line : T.text);
                     font-size: 12px;
                     font-weight: 700;
                 }
@@ -308,7 +337,7 @@ export component AppWindow inherits Window {
     preferred-height: 950px;
     min-width: 1050px;
     min-height: 830px;
-    background: #14110f;
+    background: T.bg;
 
     VerticalLayout {
         padding: 12px;
@@ -318,20 +347,26 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             spacing: 10px;
             height: 34px;
-            Text { text: "GUITAR AMP"; color: #ff9a3c; font-size: 20px; font-weight: 800; vertical-alignment: center; }
+            Image { source: @image-url("../assets/icon.png"); width: 34px; height: 34px; image-fit: contain; }
+            Text { text: "GUITAR AMP"; color: T.accent; font-size: 20px; font-weight: 800; vertical-alignment: center; }
             Btn { text: "⚙ Paramètres"; min-width: 120px; height: 34px; clicked => { S.settings-open = true; } }
             Rectangle { }
-            Rectangle {
-                width: 90px;
-                border-radius: 5px;
-                background: S.running ? #e5484d : #3fa34d;
-                Text { text: S.running ? "Arrêter" : "Démarrer"; color: white; font-weight: 700; }
-                TouchArea { clicked => { if (S.running) { S.stop(); } else { S.start(); } } }
+            HorizontalLayout {
+                spacing: 6px;
+                width: 120px;
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 6px;
+                    background: S.running ? #3fa34d : #e5484d;
+                }
+                Text { text: S.running ? "Audio actif" : "Audio arrêté"; color: T.dim; vertical-alignment: center; }
             }
         }
 
         // --- Message d'état (périphériques utilisés, erreurs)
-        Text { text: S.status; color: #d8c7ae; font-size: 12px; wrap: word-wrap; }
+        Text { text: S.status; color: T.text2; font-size: 12px; wrap: word-wrap; }
 
         // --- Entrée / sortie
         HorizontalLayout {
@@ -401,8 +436,8 @@ export component AppWindow inherits Window {
                     min-width: 100px;
                     horizontal-stretch: 1;
                     border-radius: 4px;
-                    background: Math.round(S.v.inst) == i ? #ff9a3c : #3a322b;
-                    Text { text: name; color: Math.round(S.v.inst) == i ? #1b1612 : #b9a88f; font-weight: 700; font-size: 12px; }
+                    background: Math.round(S.v.inst) == i ? T.accent : T.btn;
+                    Text { text: name; color: Math.round(S.v.inst) == i ? T.on-accent : T.dim; font-weight: 700; font-size: 12px; }
                     TouchArea { clicked => { S.edit("inst", i); } }
                 }
             }
@@ -420,8 +455,8 @@ export component AppWindow inherits Window {
                         height: 26px;
                         width: 80px;
                         border-radius: 4px;
-                        background: Math.round(S.v.amp-model) == i ? #ff9a3c : #3a322b;
-                        Text { text: name; color: Math.round(S.v.amp-model) == i ? #1b1612 : #b9a88f; font-weight: 700; }
+                        background: Math.round(S.v.amp-model) == i ? T.accent : T.btn;
+                        Text { text: name; color: Math.round(S.v.amp-model) == i ? T.on-accent : T.dim; font-weight: 700; }
                         TouchArea { clicked => { S.edit("amp_model", i); } }
                     }
                 }
@@ -450,20 +485,20 @@ export component AppWindow inherits Window {
                 VerticalLayout {
                     spacing: 4px;
                     width: 200px;
-                    Text { text: S.note; color: abs(S.cents) < 5 && S.note != "--" ? #7ccf5b : #f2e6d0; font-size: 34px; font-weight: 800; horizontal-alignment: center; }
+                    Text { text: S.note; color: abs(S.cents) < 5 && S.note != "--" ? #7ccf5b : T.text; font-size: 34px; font-weight: 800; horizontal-alignment: center; }
                     Rectangle {
                         height: 16px;
-                        background: #2a2420;
+                        background: T.dark;
                         border-radius: 3px;
-                        Rectangle { x: parent.width / 2 - 1px; width: 2px; background: #6b5a48; }
+                        Rectangle { x: parent.width / 2 - 1px; width: 2px; background: T.line; }
                         Rectangle {
                             x: parent.width / 2 + clamp(S.cents, -50, 50) / 50 * parent.width / 2 - 3px;
                             width: 6px;
                             border-radius: 3px;
-                            background: abs(S.cents) < 5 ? #7ccf5b : #ff9a3c;
+                            background: abs(S.cents) < 5 ? #7ccf5b : T.accent;
                         }
                     }
-                    Text { text: S.hz; color: #8f7f6a; horizontal-alignment: center; font-size: 11px; }
+                    Text { text: S.hz; color: T.faint; horizontal-alignment: center; font-size: 11px; }
                 }
             }
             Panel {
@@ -484,7 +519,7 @@ export component AppWindow inherits Window {
                             width: 16px;
                             height: 16px;
                             border-radius: 8px;
-                            background: S.beat == i && S.v.metro-on > 0.5 ? (i == 0 ? #ff9a3c : #7ccf5b) : #2a2420;
+                            background: S.beat == i && S.v.metro-on > 0.5 ? (i == 0 ? T.accent : #7ccf5b) : T.dark;
                         }
                     }
                 }
@@ -497,17 +532,17 @@ export component AppWindow inherits Window {
                     Rectangle {
                         height: 30px;
                         border-radius: 5px;
-                        background: S.recording ? #e5484d : #3a322b;
+                        background: S.recording ? #e5484d : T.btn;
                         Text { text: S.recording ? "■ Stop" : "● Enregistrer"; color: white; font-weight: 700; }
                         TouchArea { clicked => { S.toggle-rec(); } }
                     }
-                    Text { text: S.rec-info; color: #8f7f6a; font-size: 11px; wrap: word-wrap; }
-                    Text { text: S.rec-dir; color: #b9a88f; font-size: 10px; wrap: word-wrap; }
+                    Text { text: S.rec-info; color: T.faint; font-size: 11px; wrap: word-wrap; }
+                    Text { text: S.rec-dir; color: T.dim; font-size: 10px; wrap: word-wrap; }
                     Rectangle {
                         height: 24px;
                         border-radius: 5px;
-                        background: S.recording ? #2a2420 : #3a322b;
-                        Text { text: "Choisir le dossier…"; color: S.recording ? #6b5a48 : #f2e6d0; font-size: 12px; }
+                        background: S.recording ? T.dark : T.btn;
+                        Text { text: "Choisir le dossier…"; color: S.recording ? T.line : T.text; font-size: 12px; }
                         TouchArea { enabled: !S.recording; clicked => { S.pick-rec-dir(); } }
                     }
                 }
@@ -524,8 +559,8 @@ export component AppWindow inherits Window {
                         Rectangle {
                             width: 60px;
                             border-radius: 5px;
-                            background: #3a322b;
-                            Text { text: "Sauver"; color: #f2e6d0; font-size: 12px; }
+                            background: T.btn;
+                            Text { text: "Sauver"; color: T.text; font-size: 12px; }
                             TouchArea { clicked => { S.save-preset(name-input.text); } }
                         }
                     }
@@ -551,32 +586,40 @@ export component AppWindow inherits Window {
         TouchArea { }
         Rectangle {
             width: min(600px, parent.width - 40px);
-            height: 470px;
+            height: 550px;
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
-            background: #211c18;
+            background: T.panel;
             border-radius: 10px;
             border-width: 2px;
-            border-color: #ff9a3c;
+            border-color: T.accent;
             VerticalLayout {
                 padding: 18px;
                 spacing: 6px;
                 HorizontalLayout {
-                    Text { text: "Paramètres audio"; color: #ff9a3c; font-size: 18px; font-weight: 800; vertical-alignment: center; }
+                    Text { text: "Paramètres audio"; color: T.accent; font-size: 18px; font-weight: 800; vertical-alignment: center; }
                     Rectangle { }
                     Btn { text: "✕"; clicked => { S.settings-open = false; } }
                 }
-                Text { text: "Entrée (ta guitare : câble jack USB, interface...)"; color: #d8c7ae; font-size: 12px; }
-                ComboBox { model: S.devs-in; current-index <=> S.in-sel; enabled: !S.running; }
-                Text { text: "Sortie principale (haut-parleurs, casque...)"; color: #d8c7ae; font-size: 12px; }
-                ComboBox { model: S.devs-out; current-index <=> S.out-sel; enabled: !S.running; }
-                Text { text: "Sortie supplémentaire : le son sort aussi ici (par ex. prise jack casque)"; color: #d8c7ae; font-size: 12px; wrap: word-wrap; }
-                ComboBox { model: S.devs-out2; current-index <=> S.out2-sel; enabled: !S.running; }
-                Text { text: "Taille du buffer (plus petit = moins de retard, mais risque de craquements)"; color: #d8c7ae; font-size: 12px; wrap: word-wrap; }
-                ComboBox { model: ["64", "128", "256", "512"]; current-index <=> S.buffer-sel; enabled: !S.running; }
+                Text { text: "Entrée (ta guitare : câble jack USB, interface...)"; color: T.text2; font-size: 12px; }
+                ComboBox { model: S.devs-in; current-index <=> S.in-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Sortie principale (haut-parleurs, casque...)"; color: T.text2; font-size: 12px; }
+                ComboBox { model: S.devs-out; current-index <=> S.out-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Sortie supplémentaire : le son sort aussi ici (par ex. prise jack casque)"; color: T.text2; font-size: 12px; wrap: word-wrap; }
+                ComboBox { model: S.devs-out2; current-index <=> S.out2-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Thème de l'interface"; color: T.text2; font-size: 12px; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    height: 28px;
+                    Btn { text: "Ambre"; accent: S.theme == 0; clicked => { S.theme = 0; S.theme-changed(); } }
+                    Btn { text: "Chrome"; accent: S.theme == 1; clicked => { S.theme = 1; S.theme-changed(); } }
+                    Btn { text: "Rock"; accent: S.theme == 2; clicked => { S.theme = 2; S.theme-changed(); } }
+                }
+                Text { text: "Taille du buffer (plus petit = moins de retard, mais risque de craquements)"; color: T.text2; font-size: 12px; wrap: word-wrap; }
+                ComboBox { model: ["64", "128", "256", "512"]; current-index <=> S.buffer-sel; selected(i) => { S.settings-changed(); } }
                 Text {
-                    text: S.running ? "Arrête l'audio pour changer ces réglages." : "Les choix sont mémorisés. Un câble guitare USB est repéré tout seul.";
-                    color: #8f7f6a;
+                    text: "Les changements s'appliquent tout de suite et sont mémorisés. Un câble guitare USB est repéré tout seul, et le son suit si tu changes de casque.";
+                    color: T.faint;
                     font-size: 11px;
                     wrap: word-wrap;
                 }

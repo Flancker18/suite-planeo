@@ -16,6 +16,8 @@ pub struct Shared {
     pub in_hold: AtomicF32,
     pub out_hold: AtomicF32,
     pub beat: AtomicU32,
+    /// Mis à vrai par un flux audio en erreur (périphérique débranché...) : l'interface reconnecte.
+    pub stream_error: AtomicBool,
     pub rec_on: AtomicBool,
     pub tuner_q: ArrayQueue<f32>,
     pub rec_q: ArrayQueue<f32>,
@@ -30,6 +32,7 @@ impl Shared {
             in_hold: AtomicF32::new(0.0),
             out_hold: AtomicF32::new(0.0),
             beat: AtomicU32::new(0),
+            stream_error: AtomicBool::new(false),
             rec_on: AtomicBool::new(false),
             tuner_q: ArrayQueue::new(4096),
             rec_q: ArrayQueue::new(1 << 18),
@@ -77,6 +80,12 @@ impl Resampler {
     }
 }
 
+/// Noms des périphériques que Windows utilise « par défaut » (entrée, sortie).
+pub fn default_names() -> (Option<String>, Option<String>) {
+    let host = cpal::default_host();
+    (host.default_input_device().and_then(|d| d.name().ok()), host.default_output_device().and_then(|d| d.name().ok()))
+}
+
 /// Repère un câble guitare / interface USB dans la liste des entrées (par son nom).
 pub fn guitar_input_index(names: &[String]) -> Option<usize> {
     const KEYS: [&str; 6] = ["usb", "guitar", "guitare", "interface", "link", "codec"];
@@ -112,7 +121,7 @@ fn fixed_buffer(range: &SupportedBufferSize, wanted: u32) -> BufferSize {
     }
 }
 
-fn build_input<T>(dev: &cpal::Device, cfg: &StreamConfig, link: Arc<ArrayQueue<f32>>) -> Result<Stream, String>
+fn build_input<T>(dev: &cpal::Device, cfg: &StreamConfig, link: Arc<ArrayQueue<f32>>, shared: Arc<Shared>) -> Result<Stream, String>
 where
     T: SizedSample,
     f32: FromSample<T>,
@@ -125,7 +134,10 @@ where
                 link.force_push(f32::from_sample(frame[0]));
             }
         },
-        |e| eprintln!("Erreur entrée audio : {e}"),
+        move |e| {
+            eprintln!("Erreur entrée audio : {e}");
+            shared.stream_error.store(true, Relaxed);
+        },
         None,
     )
     .map_err(|e| e.to_string())
@@ -144,6 +156,7 @@ where
     T: SizedSample + FromSample<f32>,
 {
     let ch = cfg.channels as usize;
+    let shared_err = shared.clone();
     let mut chain = Chain::new(cfg.sample_rate.0 as f32);
     let mut resampler = Resampler::new(ratio);
     dev.build_output_stream(
@@ -186,14 +199,17 @@ where
             shared.in_hold.set(shared.in_hold.get().max(in_pk));
             shared.out_hold.set(shared.out_hold.get().max(out_pk));
         },
-        |e| eprintln!("Erreur sortie audio : {e}"),
+        move |e| {
+            eprintln!("Erreur sortie audio : {e}");
+            shared_err.stream_error.store(true, Relaxed);
+        },
         None,
     )
     .map_err(|e| e.to_string())
 }
 
 /// Seconde sortie : rejoue le son déjà traité par la sortie principale (par exemple sur la prise jack du casque).
-fn build_follower<T>(dev: &cpal::Device, cfg: &StreamConfig, link: Arc<ArrayQueue<f32>>, max_keep: usize, ratio: f32) -> Result<Stream, String>
+fn build_follower<T>(dev: &cpal::Device, cfg: &StreamConfig, link: Arc<ArrayQueue<f32>>, max_keep: usize, ratio: f32, shared: Arc<Shared>) -> Result<Stream, String>
 where
     T: SizedSample + FromSample<f32>,
 {
@@ -212,7 +228,10 @@ where
                 }
             }
         },
-        |e| eprintln!("Erreur seconde sortie : {e}"),
+        move |e| {
+            eprintln!("Erreur seconde sortie : {e}");
+            shared.stream_error.store(true, Relaxed);
+        },
         None,
     )
     .map_err(|e| e.to_string())
@@ -262,9 +281,9 @@ pub fn start(shared: &Arc<Shared>, in_name: Option<&str>, out_name: Option<&str>
         in_cfg.buffer_size = ib;
         out_cfg.buffer_size = ob;
         let i = match in_fmt {
-            SampleFormat::F32 => build_input::<f32>(&in_dev, &in_cfg, link.clone())?,
-            SampleFormat::I16 => build_input::<i16>(&in_dev, &in_cfg, link.clone())?,
-            SampleFormat::I32 => build_input::<i32>(&in_dev, &in_cfg, link.clone())?,
+            SampleFormat::F32 => build_input::<f32>(&in_dev, &in_cfg, link.clone(), shared.clone())?,
+            SampleFormat::I16 => build_input::<i16>(&in_dev, &in_cfg, link.clone(), shared.clone())?,
+            SampleFormat::I32 => build_input::<i32>(&in_dev, &in_cfg, link.clone(), shared.clone())?,
             f => return Err(format!("Format d'entrée non géré : {f:?}")),
         };
         let o = match out_fmt {
@@ -282,9 +301,9 @@ pub fn start(shared: &Arc<Shared>, in_name: Option<&str>, out_name: Option<&str>
             let ratio2 = sr as f32 / *sr2 as f32;
             let mk = |cfg: &StreamConfig| -> Result<Stream, String> {
                 match fmt {
-                    SampleFormat::F32 => build_follower::<f32>(d, cfg, t.clone(), max_keep, ratio2),
-                    SampleFormat::I16 => build_follower::<i16>(d, cfg, t.clone(), max_keep, ratio2),
-                    SampleFormat::I32 => build_follower::<i32>(d, cfg, t.clone(), max_keep, ratio2),
+                    SampleFormat::F32 => build_follower::<f32>(d, cfg, t.clone(), max_keep, ratio2, shared.clone()),
+                    SampleFormat::I16 => build_follower::<i16>(d, cfg, t.clone(), max_keep, ratio2, shared.clone()),
+                    SampleFormat::I32 => build_follower::<i32>(d, cfg, t.clone(), max_keep, ratio2, shared.clone()),
                     f => Err(format!("Format de seconde sortie non géré : {f:?}")),
                 }
             };

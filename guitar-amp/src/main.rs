@@ -74,6 +74,7 @@ struct Settings {
     output: Option<String>,
     output2: Option<String>,
     buffer: Option<u32>,
+    theme: Option<i32>,
 }
 
 fn load_settings() -> Settings {
@@ -122,10 +123,48 @@ struct State {
     tuner: VecDeque<f32>,
     tick: u32,
     auto: Option<(Instant, f32)>,
+    retry: u32,
+    defaults: (Option<String>, Option<String>),
     in_disp: f32,
     out_disp: f32,
     hz: f32,
     silent_ticks: u32,
+}
+
+/// (Re)démarre l'audio avec les choix actuels : au lancement, à chaque changement de réglage et en cas de périphérique perdu.
+fn start_audio(st: &mut State, sh: &Arc<Shared>, g: &S) {
+    if let Some(r) = st.recorder.take() {
+        g.set_rec_info(format!("Enregistré : {}", r.finish()).into());
+        g.set_recording(false);
+    }
+    st.engine = None; // libère les périphériques avant de les rouvrir
+    sh.stream_error.store(false, Relaxed);
+    sh.in_peak.set(0.0);
+    sh.out_peak.set(0.0);
+    st.defaults = audio::default_names();
+    let pick = |sel: i32, list: &Vec<String>| if sel > 0 { list.get(sel as usize - 1).cloned() } else { None };
+    let (i, o, o2) = (pick(g.get_in_sel(), &st.devs_in), pick(g.get_out_sel(), &st.devs_out), pick(g.get_out2_sel(), &st.devs_out));
+    let buffer = BUFFERS[(g.get_buffer_sel().max(0) as usize).min(BUFFERS.len() - 1)];
+    match audio::start(sh, i.as_deref(), o.as_deref(), o2.as_deref(), buffer) {
+        Ok(e) => {
+            let ms = e.buffer as f32 / e.sample_rate as f32 * 1000.0;
+            let conv = if e.input_rate != e.sample_rate { format!(" (conversion {} → {} Hz)", e.input_rate, e.sample_rate) } else { String::new() };
+            let second = e.output2_name.as_ref().map(|n| format!(" + {n}")).unwrap_or_default();
+            g.set_status(format!("Entrée : {} | Sortie : {}{} | {} Hz{}, buffer {} (~{:.1} ms)", e.input_name, e.output_name, second, e.sample_rate, conv, e.buffer, ms).into());
+            update_settings(|s| {
+                s.input = i.clone();
+                s.output = o.clone();
+                s.output2 = o2.clone();
+                s.buffer = Some(buffer);
+            });
+            st.engine = Some(e);
+            g.set_running(true);
+        }
+        Err(err) => {
+            g.set_running(false);
+            g.set_status(format!("Audio arrêté : {err}").into());
+        }
+    }
 }
 
 fn device_model(first: &str, list: &[String]) -> ModelRc<SharedString> {
@@ -135,10 +174,10 @@ fn device_model(first: &str, list: &[String]) -> ModelRc<SharedString> {
 }
 
 /// Relit les périphériques audio. Si un câble guitare USB vient d'être branché, il est sélectionné tout seul.
-fn rescan_devices(st: &mut State, g: &S) {
+fn rescan_devices(st: &mut State, g: &S) -> bool {
     let (ins, outs) = audio::device_names();
     if ins == st.devs_in && outs == st.devs_out {
-        return;
+        return false;
     }
     let chosen = |sel: i32, list: &Vec<String>| if sel > 0 { list.get(sel as usize - 1).cloned() } else { None };
     let (cur_in, cur_out, cur_out2) = (chosen(g.get_in_sel(), &st.devs_in), chosen(g.get_out_sel(), &st.devs_out), chosen(g.get_out2_sel(), &st.devs_out));
@@ -155,6 +194,7 @@ fn rescan_devices(st: &mut State, g: &S) {
     });
     g.set_out_sel(pos(&cur_out, &st.devs_out));
     g.set_out2_sel(pos(&cur_out2, &st.devs_out));
+    true
 }
 
 fn preset_names(st: &State) -> ModelRc<SharedString> {
@@ -270,6 +310,7 @@ fn main() -> Result<(), slint::PlatformError> {
     g.set_in_sel(find(&saved.input, &ins).or_else(|| audio::guitar_input_index(&ins).map(|i| i as i32 + 1)).unwrap_or(0));
     g.set_out_sel(find(&saved.output, &outs).unwrap_or(0));
     g.set_out2_sel(find(&saved.output2, &outs).unwrap_or(0));
+    g.set_theme(saved.theme.unwrap_or(0));
     g.set_buffer_sel(BUFFERS.iter().position(|&b| Some(b) == saved.buffer).unwrap_or(1) as i32);
     g.set_v(shared.params.to_ui());
 
@@ -295,6 +336,8 @@ fn main() -> Result<(), slint::PlatformError> {
         tuner: VecDeque::new(),
         tick: 0,
         auto: None,
+        retry: 0,
+        defaults: (None, None),
         in_disp: 0.0,
         out_disp: 0.0,
         hz: 0.0,
@@ -314,54 +357,20 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
-    // Démarrer l'audio
+    // Thème de l'interface : mémorisé
     {
-        let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
-        g.on_start(move || {
-            let ui = weak.upgrade().unwrap();
-            let g = ui.global::<S>();
-            let mut st = st.borrow_mut();
-            let pick = |sel: i32, list: &Vec<String>| if sel > 0 { list.get(sel as usize - 1).cloned() } else { None };
-            let (i, o, o2) = (pick(g.get_in_sel(), &st.devs_in), pick(g.get_out_sel(), &st.devs_out), pick(g.get_out2_sel(), &st.devs_out));
-            let buffer = BUFFERS[(g.get_buffer_sel().max(0) as usize).min(BUFFERS.len() - 1)];
-            match audio::start(&sh, i.as_deref(), o.as_deref(), o2.as_deref(), buffer) {
-                Ok(e) => {
-                    let ms = e.buffer as f32 / e.sample_rate as f32 * 1000.0;
-                    let conv = if e.input_rate != e.sample_rate { format!(" (conversion {} → {} Hz)", e.input_rate, e.sample_rate) } else { String::new() };
-                    let second = e.output2_name.as_ref().map(|n| format!(" + {n}")).unwrap_or_default();
-                    g.set_status(
-                        format!("En marche — Entrée : {} | Sortie : {}{} | {} Hz{}, buffer {} (~{:.1} ms)", e.input_name, e.output_name, second, e.sample_rate, conv, e.buffer, ms).into(),
-                    );
-                    update_settings(|s| {
-                        s.input = i.clone();
-                        s.output = o.clone();
-                        s.output2 = o2.clone();
-                        s.buffer = Some(buffer);
-                    });
-                    st.engine = Some(e);
-                    g.set_running(true);
-                }
-                Err(err) => g.set_status(format!("Erreur : {err}").into()),
-            }
+        let weak = ui.as_weak();
+        g.on_theme_changed(move || {
+            let t = weak.upgrade().unwrap().global::<S>().get_theme();
+            update_settings(|s| s.theme = Some(t));
         });
     }
 
-    // Arrêter l'audio
+    // Changement d'un réglage audio (entrée, sortie, 2e sortie, buffer) : appliqué tout de suite, sans rien arrêter à la main
     {
         let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
-        g.on_stop(move || {
-            let ui = weak.upgrade().unwrap();
-            let g = ui.global::<S>();
-            let mut st = st.borrow_mut();
-            if let Some(r) = st.recorder.take() {
-                g.set_rec_info(format!("Enregistré : {}", r.finish()).into());
-                g.set_recording(false);
-            }
-            st.engine = None;
-            sh.in_peak.set(0.0);
-            sh.out_peak.set(0.0);
-            g.set_running(false);
-            g.set_status("Arrêté".into());
+        g.on_settings_changed(move || {
+            start_audio(&mut st.borrow_mut(), &sh, &weak.upgrade().unwrap().global::<S>());
         });
     }
 
@@ -400,30 +409,26 @@ fn main() -> Result<(), slint::PlatformError> {
     }
     let rescan_timer = Timer::default();
     {
-        let (st, weak) = (state.clone(), ui.as_weak());
+        let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
         rescan_timer.start(TimerMode::Repeated, Duration::from_secs(2), move || {
             let ui = weak.upgrade().unwrap();
             let g = ui.global::<S>();
-            if !g.get_running() {
-                rescan_devices(&mut st.borrow_mut(), &g);
-            }
-        });
-    }
-
-    // Auto-niveau : mesure la crête de ta guitare pendant 3 s et règle l'entrée en conséquence
-    {
-        let (sh, st, weak) = (shared.clone(), state.clone(), ui.as_weak());
-        g.on_auto_level(move || {
-            let ui = weak.upgrade().unwrap();
-            let g = ui.global::<S>();
             let mut st = st.borrow_mut();
-            if st.engine.is_none() {
-                g.set_status("Auto-niveau : démarre d'abord l'audio, puis joue.".into());
-                return;
+            st.retry += 1;
+            let changed = rescan_devices(&mut st, &g);
+            if !g.get_running() {
+                // Pas d'audio : on réessaie quand la liste change (câble branché), puis toutes les 6 s
+                if changed || st.retry % 3 == 0 {
+                    start_audio(&mut st, &sh, &g);
+                }
+            } else {
+                // Périphérique perdu, ou Windows a changé le périphérique par défaut (casque branché...)
+                let (di, dout) = audio::default_names();
+                let default_moved = (g.get_in_sel() == 0 && di != st.defaults.0) || (g.get_out_sel() == 0 && dout != st.defaults.1);
+                if sh.stream_error.swap(false, Relaxed) || default_moved || (changed && st.engine.is_none()) {
+                    start_audio(&mut st, &sh, &g);
+                }
             }
-            sh.in_hold.set(0.0);
-            st.auto = Some((Instant::now(), 0.0));
-            g.set_status("Auto-niveau : joue des accords FORT pendant 3 secondes…".into());
         });
     }
 
@@ -676,6 +681,9 @@ fn main() -> Result<(), slint::PlatformError> {
             update_tab(&mut st, &g, dt);
         });
     }
+
+    // L'audio démarre tout seul
+    start_audio(&mut state.borrow_mut(), &shared, &g);
 
     ui.run()
 }
