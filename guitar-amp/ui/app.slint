@@ -1,0 +1,347 @@
+import { ComboBox, LineEdit } from "std-widgets.slint";
+
+export struct Vals {
+    input: float, gate-on: float, gate-th: float,
+    od-on: float, od-drive: float, od-tone: float, od-level: float,
+    ch-on: float, ch-rate: float, ch-depth: float, ch-mix: float,
+    amp-model: float, amp-gain: float, bass: float, mid: float, treble: float, presence: float, master: float, cab-on: float,
+    dl-on: float, dl-time: float, dl-fb: float, dl-mix: float,
+    rv-on: float, rv-size: float, rv-mix: float,
+    mute: float, metro-on: float, metro-bpm: float, metro-vol: float,
+}
+
+export global S {
+    in-out property <Vals> v;
+    in-out property <float> in-level;
+    in-out property <float> out-level;
+    in-out property <float> cents;
+    in-out property <string> note: "--";
+    in-out property <string> hz;
+    in-out property <string> status: "Arrêté";
+    in-out property <string> rec-info;
+    in-out property <int> beat: -1;
+    in-out property <[string]> devs-in;
+    in-out property <[string]> devs-out;
+    in-out property <[string]> presets;
+    in-out property <int> in-sel;
+    in-out property <int> out-sel;
+    in-out property <int> preset-sel: -1;
+    in-out property <bool> running;
+    in-out property <bool> recording;
+    callback edit(string, float);
+    callback start();
+    callback stop();
+    callback toggle-rec();
+    callback pick-in(int);
+    callback pick-out(int);
+    callback apply-preset(int);
+    callback save-preset(string);
+}
+
+component Knob inherits Rectangle {
+    in property <string> label;
+    in property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 10;
+    callback changed(float);
+    property <float> start;
+    width: 66px;
+    height: 86px;
+    VerticalLayout {
+        alignment: center;
+        spacing: 3px;
+        Rectangle {
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            background: #2a2420;
+            border-width: 2px;
+            border-color: #6b5a48;
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: 50;
+                viewbox-height: 50;
+                stroke: #ff9a3c;
+                stroke-width: 4px;
+                stroke-line-cap: round;
+                property <angle> a: -135deg + (root.value - root.minimum) / (root.maximum - root.minimum) * 270deg;
+                MoveTo { x: 25 + 8 * Math.sin(parent.a); y: 25 - 8 * Math.cos(parent.a); }
+                LineTo { x: 25 + 20 * Math.sin(parent.a); y: 25 - 20 * Math.cos(parent.a); }
+            }
+            TouchArea {
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.start = root.value;
+                    }
+                }
+                moved => {
+                    root.changed(clamp(root.start + (self.pressed-y - self.mouse-y) / 150px * (root.maximum - root.minimum), root.minimum, root.maximum));
+                }
+                scroll-event(e) => {
+                    root.changed(clamp(root.value + e.delta-y / 120px * (root.maximum - root.minimum) * 0.05, root.minimum, root.maximum));
+                    accept
+                }
+            }
+        }
+        Text { text: root.label; color: #d8c7ae; font-size: 12px; horizontal-alignment: center; }
+        Text { text: Math.round(root.value * 10) / 10; color: #8f7f6a; font-size: 10px; horizontal-alignment: center; }
+    }
+}
+
+component Toggle inherits Rectangle {
+    in property <string> text;
+    in property <float> value;
+    callback changed(float);
+    height: 26px;
+    min-width: 56px;
+    border-radius: 4px;
+    background: root.value > 0.5 ? #ff9a3c : #3a322b;
+    Text { text: root.text; color: root.value > 0.5 ? #1b1612 : #b9a88f; font-size: 12px; font-weight: 700; }
+    TouchArea { clicked => { root.changed(root.value > 0.5 ? 0 : 1); } }
+}
+
+component Panel inherits Rectangle {
+    in property <string> title;
+    in property <float> on-value: -1;
+    callback toggled(float);
+    background: #211c18;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #3d332b;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.title; color: #ffb866; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+            Rectangle { }
+            if root.on-value >= 0: Toggle { text: root.on-value > 0.5 ? "ON" : "OFF"; value: root.on-value; changed(x) => { root.toggled(x); } }
+        }
+        HorizontalLayout { spacing: 2px; alignment: start; @children }
+    }
+}
+
+component Meter inherits Rectangle {
+    in property <string> label;
+    in property <float> level;
+    height: 14px;
+    HorizontalLayout {
+        spacing: 6px;
+        Text { text: root.label; color: #b9a88f; font-size: 11px; width: 34px; vertical-alignment: center; }
+        Rectangle {
+            background: #2a2420;
+            border-radius: 3px;
+            Rectangle {
+                x: 0;
+                width: parent.width * clamp(root.level, 0, 1);
+                background: root.level > 0.95 ? #e5484d : #7ccf5b;
+                border-radius: 3px;
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Guitar Amp";
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 1100px;
+    preferred-height: 760px;
+    min-width: 1000px;
+    min-height: 700px;
+    background: #14110f;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+
+        // --- Barre du haut : périphériques
+        HorizontalLayout {
+            spacing: 10px;
+            height: 34px;
+            Text { text: "GUITAR AMP"; color: #ff9a3c; font-size: 20px; font-weight: 800; vertical-alignment: center; }
+            Text { text: "Entrée"; color: #b9a88f; vertical-alignment: center; }
+            ComboBox { model: S.devs-in; current-index <=> S.in-sel; enabled: !S.running; selected(i) => { S.pick-in(S.in-sel); } }
+            Text { text: "Sortie"; color: #b9a88f; vertical-alignment: center; }
+            ComboBox { model: S.devs-out; current-index <=> S.out-sel; enabled: !S.running; selected(i) => { S.pick-out(S.out-sel); } }
+            Rectangle {
+                width: 90px;
+                border-radius: 5px;
+                background: S.running ? #e5484d : #3fa34d;
+                Text { text: S.running ? "Arrêter" : "Démarrer"; color: white; font-weight: 700; }
+                TouchArea { clicked => { if (S.running) { S.stop(); } else { S.start(); } } }
+            }
+            Text { text: S.status; color: #8f7f6a; vertical-alignment: center; }
+        }
+
+        // --- Entrée / sortie
+        HorizontalLayout {
+            spacing: 14px;
+            Meter { label: "Entrée"; level: S.in-level; }
+            Meter { label: "Sortie"; level: S.out-level; }
+            Toggle { text: "MUET"; value: S.v.mute; changed(x) => { S.edit("mute", x); } width: 70px; }
+        }
+
+        // --- Pédales
+        HorizontalLayout {
+            spacing: 10px;
+            Panel {
+                title: "ENTRÉE / GATE";
+                on-value: S.v.gate-on;
+                toggled(x) => { S.edit("gate_on", x); }
+                Knob { label: "Entrée"; value: S.v.input; changed(x) => { S.edit("input", x); } }
+                Knob { label: "Seuil"; value: S.v.gate-th; changed(x) => { S.edit("gate_th", x); } }
+            }
+            Panel {
+                title: "OVERDRIVE";
+                on-value: S.v.od-on;
+                toggled(x) => { S.edit("od_on", x); }
+                Knob { label: "Drive"; value: S.v.od-drive; changed(x) => { S.edit("od_drive", x); } }
+                Knob { label: "Tone"; value: S.v.od-tone; changed(x) => { S.edit("od_tone", x); } }
+                Knob { label: "Level"; value: S.v.od-level; changed(x) => { S.edit("od_level", x); } }
+            }
+            Panel {
+                title: "CHORUS";
+                on-value: S.v.ch-on;
+                toggled(x) => { S.edit("ch_on", x); }
+                Knob { label: "Vitesse"; value: S.v.ch-rate; changed(x) => { S.edit("ch_rate", x); } }
+                Knob { label: "Profond."; value: S.v.ch-depth; changed(x) => { S.edit("ch_depth", x); } }
+                Knob { label: "Mix"; value: S.v.ch-mix; changed(x) => { S.edit("ch_mix", x); } }
+            }
+        }
+
+        // --- Ampli
+        Panel {
+            title: "AMPLI";
+            HorizontalLayout {
+                spacing: 4px;
+                VerticalLayout {
+                    spacing: 4px;
+                    padding-right: 10px;
+                    for name[i] in ["Clean", "Crunch", "Lead", "Metal"]: Rectangle {
+                        height: 26px;
+                        width: 80px;
+                        border-radius: 4px;
+                        background: Math.round(S.v.amp-model) == i ? #ff9a3c : #3a322b;
+                        Text { text: name; color: Math.round(S.v.amp-model) == i ? #1b1612 : #b9a88f; font-weight: 700; }
+                        TouchArea { clicked => { S.edit("amp_model", i); } }
+                    }
+                }
+                Knob { label: "Gain"; value: S.v.amp-gain; changed(x) => { S.edit("amp_gain", x); } }
+                Knob { label: "Basses"; value: S.v.bass; changed(x) => { S.edit("bass", x); } }
+                Knob { label: "Médiums"; value: S.v.mid; changed(x) => { S.edit("mid", x); } }
+                Knob { label: "Aigus"; value: S.v.treble; changed(x) => { S.edit("treble", x); } }
+                Knob { label: "Présence"; value: S.v.presence; changed(x) => { S.edit("presence", x); } }
+                Knob { label: "Master"; value: S.v.master; changed(x) => { S.edit("master", x); } }
+                VerticalLayout {
+                    alignment: center;
+                    padding-left: 10px;
+                    Toggle { text: "BAFFLE"; value: S.v.cab-on; changed(x) => { S.edit("cab_on", x); } }
+                }
+            }
+        }
+
+        // --- Delay / Reverb
+        HorizontalLayout {
+            spacing: 10px;
+            Panel {
+                title: "DELAY";
+                on-value: S.v.dl-on;
+                toggled(x) => { S.edit("dl_on", x); }
+                Knob { label: "Temps"; value: S.v.dl-time; changed(x) => { S.edit("dl_time", x); } }
+                Knob { label: "Répét."; value: S.v.dl-fb; changed(x) => { S.edit("dl_fb", x); } }
+                Knob { label: "Mix"; value: S.v.dl-mix; changed(x) => { S.edit("dl_mix", x); } }
+            }
+            Panel {
+                title: "REVERB";
+                on-value: S.v.rv-on;
+                toggled(x) => { S.edit("rv_on", x); }
+                Knob { label: "Taille"; value: S.v.rv-size; changed(x) => { S.edit("rv_size", x); } }
+                Knob { label: "Mix"; value: S.v.rv-mix; changed(x) => { S.edit("rv_mix", x); } }
+            }
+        }
+
+        // --- Bas : accordeur, métronome, enregistrement, presets
+        HorizontalLayout {
+            spacing: 10px;
+            Panel {
+                title: "ACCORDEUR";
+                VerticalLayout {
+                    spacing: 4px;
+                    width: 200px;
+                    Text { text: S.note; color: abs(S.cents) < 5 && S.note != "--" ? #7ccf5b : #f2e6d0; font-size: 34px; font-weight: 800; horizontal-alignment: center; }
+                    Rectangle {
+                        height: 16px;
+                        background: #2a2420;
+                        border-radius: 3px;
+                        Rectangle { x: parent.width / 2 - 1px; width: 2px; background: #6b5a48; }
+                        Rectangle {
+                            x: parent.width / 2 + clamp(S.cents, -50, 50) / 50 * parent.width / 2 - 3px;
+                            width: 6px;
+                            border-radius: 3px;
+                            background: abs(S.cents) < 5 ? #7ccf5b : #ff9a3c;
+                        }
+                    }
+                    Text { text: S.hz; color: #8f7f6a; horizontal-alignment: center; font-size: 11px; }
+                }
+            }
+            Panel {
+                title: "MÉTRONOME";
+                on-value: S.v.metro-on;
+                toggled(x) => { S.edit("metro_on", x); }
+                VerticalLayout {
+                    spacing: 6px;
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 2px;
+                        Knob { label: "BPM"; minimum: 40; maximum: 220; value: S.v.metro-bpm; changed(x) => { S.edit("metro_bpm", Math.round(x)); } }
+                        Knob { label: "Volume"; value: S.v.metro-vol; changed(x) => { S.edit("metro_vol", x); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        for i in 4: Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 8px;
+                            background: S.beat == i && S.v.metro-on > 0.5 ? (i == 0 ? #ff9a3c : #7ccf5b) : #2a2420;
+                        }
+                    }
+                }
+            }
+            Panel {
+                title: "ENREGISTREMENT";
+                VerticalLayout {
+                    spacing: 8px;
+                    width: 190px;
+                    Rectangle {
+                        height: 30px;
+                        border-radius: 5px;
+                        background: S.recording ? #e5484d : #3a322b;
+                        Text { text: S.recording ? "■ Stop" : "● Enregistrer"; color: white; font-weight: 700; }
+                        TouchArea { clicked => { S.toggle-rec(); } }
+                    }
+                    Text { text: S.rec-info; color: #8f7f6a; font-size: 11px; wrap: word-wrap; }
+                }
+            }
+            Panel {
+                title: "PRESETS";
+                VerticalLayout {
+                    spacing: 6px;
+                    width: 230px;
+                    ComboBox { model: S.presets; current-index <=> S.preset-sel; selected(i) => { S.apply-preset(S.preset-sel); } }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        name-input := LineEdit { placeholder-text: "Nom du preset"; }
+                        Rectangle {
+                            width: 60px;
+                            border-radius: 5px;
+                            background: #3a322b;
+                            Text { text: "Sauver"; color: #f2e6d0; font-size: 12px; }
+                            TouchArea { clicked => { S.save-preset(name-input.text); } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
