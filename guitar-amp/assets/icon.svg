@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#ff6a2b"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- poignée -->
+  <path d="M96 62 V44 Q96 36 104 36 H152 Q160 36 160 44 V62" fill="none" stroke="#0e0b09" stroke-width="10" stroke-linecap="round"/>
+  <!-- câble jack -->
+  <path d="M38 190 Q10 190 10 222 Q10 244 40 244 H70" fill="none" stroke="#0e0b09" stroke-width="8" stroke-linecap="round"/>
+  <!-- ampli -->
+  <rect x="38" y="62" width="180" height="140" rx="16" fill="#1d1815" stroke="#0e0b09" stroke-width="6"/>
+  <rect x="38" y="62" width="180" height="30" rx="16" fill="#2c2520"/>
+  <rect x="38" y="78" width="180" height="14" fill="#2c2520"/>
+  <circle cx="64" cy="77" r="7" fill="#ffb347"/><circle cx="92" cy="77" r="7" fill="#ffb347"/>
+  <circle cx="120" cy="77" r="7" fill="#ffb347"/><circle cx="148" cy="77" r="7" fill="#ffb347"/>
+  <circle cx="190" cy="77" r="5" fill="#e5484d"/>
+  <!-- haut-parleur souriant -->
+  <circle cx="128" cy="144" r="44" fill="#3a322b" stroke="#0e0b09" stroke-width="5"/>
+  <g stroke="#4a3f36" stroke-width="3"><line x1="86" y1="108" x2="170" y2="180"/><line x1="170" y1="108" x2="86" y2="180"/></g>
+  <circle cx="128" cy="144" r="30" fill="#2a2420"/>
+  <circle cx="114" cy="134" r="6" fill="#fff4e0"/><circle cx="142" cy="134" r="6" fill="#fff4e0"/>
+  <path d="M106 150 Q128 176 150 150" fill="none" stroke="#fff4e0" stroke-width="7" stroke-linecap="round"/>
+  <!-- éclair -->
+  <path d="M214 20 L176 78 L200 78 L184 124 L232 60 L206 60 Z" fill="#fff4e0" stroke="#1d1815" stroke-width="5" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,708 @@
+import { ComboBox, LineEdit } from "std-widgets.slint";
+
+export struct Vals {
+    input: float, gate-on: float, gate-th: float,
+    od-on: float, od-drive: float, od-tone: float, od-level: float,
+    ch-on: float, ch-rate: float, ch-depth: float, ch-mix: float,
+    inst: float, body: float,
+    amp-model: float, amp-gain: float, bass: float, mid: float, treble: float, presence: float, master: float, cab-on: float,
+    dl-on: float, dl-time: float, dl-fb: float, dl-mix: float,
+    rv-on: float, rv-size: float, rv-mix: float,
+    mute: float, tuner-on: float, metro-on: float, metro-bpm: float, metro-vol: float,
+}
+
+export struct TabItem { x: float, string: int, fret: string, state: int }
+
+export global S {
+    in-out property <Vals> v;
+    in-out property <float> in-level;
+    in-out property <float> out-level;
+    in-out property <float> cents;
+    in-out property <string> note: "--";
+    in-out property <string> hz;
+    in-out property <string> status: "Arrêté";
+    in-out property <string> rec-info;
+    in-out property <string> rec-dir;
+    in-out property <int> beat: -1;
+    in-out property <[string]> devs-in;
+    in-out property <[string]> devs-out;
+    in-out property <[string]> devs-out2;
+    in-out property <int> out2-sel;
+    in-out property <int> buffer-sel: 1;
+    in-out property <bool> settings-open;
+    in-out property <int> theme;
+    in-out property <int> tuning;
+    in-out property <[string]> tuner-strings;
+    in-out property <int> tuner-active: -1;
+    in-out property <int> tuner-lock: -1;
+    // Thème Arc-en-ciel : `phase` avance de 0 à 6 ; chaque couleur reste vive, puis passe vite à la suivante
+    in-out property <float> phase;
+    property <[color]> palette: [#ff7eb6, #ff2bd6, #39e75f, #2f7bff, #ff3b3b, #ffe14a];
+    out property <int> seg: Math.floor(phase);
+    out property <color> rainbow: palette[seg - 6 * Math.floor(seg / 6)].mix(palette[(seg + 1) - 6 * Math.floor((seg + 1) / 6)], 1 - Math.clamp((phase - seg - 0.55) / 0.45, 0, 1));
+    in-out property <[string]> presets;
+    in-out property <int> in-sel;
+    in-out property <int> out-sel;
+    in-out property <int> preset-sel: -1;
+    in-out property <bool> running;
+    in-out property <bool> recording;
+    in-out property <bool> playing;
+    in-out property <bool> has-recording;
+    in-out property <bool> loop-on;
+    // tablature
+    in-out property <bool> tab-shown;
+    in-out property <bool> tab-playing;
+    in-out property <string> tab-title;
+    in-out property <string> tab-measure;
+    in-out property <[string]> tab-tracks;
+    in-out property <int> tab-track-sel;
+    in-out property <int> tab-strings: 6;
+    in-out property <[TabItem]> tab-notes;
+    in-out property <[float]> tab-bars;
+    in-out property <float> tab-speed: 100;
+    callback tab-load();
+    callback tab-close();
+    callback tab-toggle-play();
+    callback tab-restart();
+    callback tab-step(int);
+    callback tab-pick-track(int);
+    in-out property <bool> tab-wait;
+    in-out property <string> tab-wait-text;
+    callback tab-toggle-wait();
+    callback tab-set-speed(float);
+    callback edit(string, float);
+    callback refresh-devices();
+    callback auto-level();
+    callback settings-changed();
+    callback tuning-changed();
+    callback tuner-lock-string(int);
+    callback theme-changed();
+    callback toggle-rec();
+    callback play-recording();
+    callback stop-all();
+    callback toggle-loop();
+    callback pick-rec-dir();
+    callback pick-in(int);
+    callback pick-out(int);
+    callback apply-preset(int);
+    callback save-preset(string);
+}
+
+// Thèmes : 0 Ambre, 1 Chrome, 2 Rock, 3 Vert, 4 Bleu, 5 Arc-en-ciel (les couleurs défilent toutes seules)
+export global T {
+    out property <color> accent: [#ff9a3c, #cfd6dd, #e5322d, #3ddc6c, #3b8cff, S.rainbow][S.theme];
+    out property <color> accent2: [#ffb866, #eef2f6, #ff6b5f, #7dffa0, #7db4ff, S.rainbow.mix(#ffffff, 0.55)][S.theme];
+    out property <color> on-accent: [#1b1612, #101214, #ffffff, #07210f, #ffffff, #0b0610][S.theme];
+    out property <color> text: [#f2e6d0, #eceff2, #f3e9e9, #e6f5ea, #e8eefb, #f3eafd][S.theme];
+    out property <color> text2: [#d8c7ae, #c3cad1, #d9c6c6, #bfdcc7, #bccbe8, #d6c6ee][S.theme];
+    out property <color> dim: [#b9a88f, #9aa2aa, #b39a9a, #8fb59a, #8fa3c8, #a894c8][S.theme];
+    out property <color> faint: [#8f7f6a, #737b83, #7d6666, #5f8268, #62779c, #7a6a96][S.theme];
+    out property <color> line: [#6b5a48, #5a6169, #5a3a3a, #3c6a49, #3a527f, #5a4a7a][S.theme];
+    out property <color> btn: [#3a322b, #2b2e33, #2e1c1c, #1b2c21, #1a2740, #241a36][S.theme];
+    out property <color> dark: [#2a2420, #16181b, #1c1111, #0c1710, #0d1424, #150f22][S.theme];
+    out property <color> panel: [#211c18, #1a1c20, #170e0e, #101a13, #0f1623, #150f1f][S.theme];
+    out property <color> panel-border: [#3d332b, #4b5158, #4a1f1f, #1f4a2c, #1d3a66, #3a2a5c][S.theme];
+    out property <color> canvas: [#17130f, #0f1113, #0e0808, #0a120d, #0a101c, #0e0916][S.theme];
+    out property <color> bg: [#14110f, #0c0d0f, #090606, #0a100c, #090c12, #0c0912][S.theme];
+    out property <color> sp0: [#0b0907, #08090a, #070505, #060c08, #060910, #07040b][S.theme];
+    out property <color> sp1: [#1c1713, #17191c, #170f0f, #0f1a13, #0e1522, #130d1c][S.theme];
+    out property <color> sp2: [#211b16, #1d2024, #1d1212, #13211a, #131c2e, #1a1226][S.theme];
+    out property <color> sp-edge: [#4a3d31, #a3abb3, #7a2a2a, #2f8a4c, #3b6fc4, S.rainbow][S.theme];
+    out property <color> sp-edge2: [#3a2f26, #6f767d, #4a1f1f, #1f5a33, #274a86, S.rainbow.mix(#000000, 0.5)][S.theme];
+    out property <color> sp-edge3: [#2e261f, #3d4248, #2e1616, #143a22, #172c52, S.rainbow.mix(#000000, 0.3)][S.theme];
+    out property <color> trim: [#b8893a, #cfd5db, #9c1f1f, #3ddc6c, #3b8cff, S.rainbow][S.theme];
+    out property <color> grille: [#2b231c, #4f555c, #141414, #0f1712, #0e1420, #120c1a][S.theme];
+    out property <color> edge-dark: [#0e0b09, #06070a, #040303, #040806, #04060b, #050308][S.theme];
+    out property <color> mesh: [#00000066, #00000066, #ffffff16, #3ddc6c18, #3b8cff18, #ffffff14][S.theme];
+}
+
+component Knob inherits Rectangle {
+    in property <string> label;
+    in property <float> value;
+    in property <float> minimum: 0;
+    in property <float> maximum: 10;
+    // Allumé : le contour du potard brille (effet actif)
+    in property <bool> lit: true;
+    callback changed(float);
+    property <float> start;
+    width: 66px;
+    height: 86px;
+    VerticalLayout {
+        alignment: center;
+        spacing: 3px;
+        Rectangle {
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            background: T.dark;
+            border-width: 2px;
+            border-color: root.lit ? T.accent : T.line;
+            drop-shadow-blur: root.lit ? 10px : 0px;
+            drop-shadow-color: root.lit ? T.accent : #00000000;
+            Path {
+                width: 100%;
+                height: 100%;
+                viewbox-width: 50;
+                viewbox-height: 50;
+                stroke: root.lit ? T.accent : T.line;
+                stroke-width: 4px;
+                stroke-line-cap: round;
+                property <angle> a: -135deg + (root.value - root.minimum) / (root.maximum - root.minimum) * 270deg;
+                MoveTo { x: 25 + 8 * Math.sin(parent.a); y: 25 - 8 * Math.cos(parent.a); }
+                LineTo { x: 25 + 20 * Math.sin(parent.a); y: 25 - 20 * Math.cos(parent.a); }
+            }
+            TouchArea {
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.start = root.value;
+                    }
+                }
+                moved => {
+                    root.changed(clamp(root.start + (self.pressed-y - self.mouse-y) / 150px * (root.maximum - root.minimum), root.minimum, root.maximum));
+                }
+                scroll-event(e) => {
+                    root.changed(clamp(root.value + e.delta-y / 120px * (root.maximum - root.minimum) * 0.05, root.minimum, root.maximum));
+                    accept
+                }
+            }
+        }
+        Text { text: root.label; color: T.text2; font-size: 12px; horizontal-alignment: center; }
+        Text { text: Math.round(root.value * 10) / 10; color: T.faint; font-size: 10px; horizontal-alignment: center; }
+    }
+}
+
+component Toggle inherits Rectangle {
+    in property <string> text;
+    in property <float> value;
+    callback changed(float);
+    height: 26px;
+    min-width: 56px;
+    border-radius: 4px;
+    background: root.value > 0.5 ? T.accent : T.btn;
+    drop-shadow-blur: root.value > 0.5 ? 12px : 0px;
+    drop-shadow-color: root.value > 0.5 ? T.accent : #00000000;
+    Text { text: root.text; color: root.value > 0.5 ? T.on-accent : T.dim; font-size: 12px; font-weight: 700; }
+    TouchArea { clicked => { root.changed(root.value > 0.5 ? 0 : 1); } }
+}
+
+component Panel inherits Rectangle {
+    in property <string> title;
+    in property <float> on-value: -1;
+    callback toggled(float);
+    background: T.panel;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: T.panel-border;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: root.title; color: T.accent2; font-size: 14px; font-weight: 700; vertical-alignment: center; }
+            Rectangle { }
+            if root.on-value >= 0: Toggle { text: root.on-value > 0.5 ? "ON" : "OFF"; value: root.on-value; changed(x) => { root.toggled(x); } }
+        }
+        HorizontalLayout { spacing: 2px; alignment: start; @children }
+    }
+}
+
+component Meter inherits Rectangle {
+    in property <string> label;
+    in property <float> level;
+    height: 14px;
+    HorizontalLayout {
+        spacing: 6px;
+        Text { text: root.label; color: T.dim; font-size: 11px; width: 34px; vertical-alignment: center; }
+        Rectangle {
+            background: T.dark;
+            border-radius: 3px;
+            Rectangle {
+                x: 0;
+                width: parent.width * clamp(root.level, 0, 1);
+                background: root.level > 0.95 ? #e5484d : #7ccf5b;
+                border-radius: 3px;
+            }
+        }
+    }
+}
+
+
+component Btn inherits Rectangle {
+    in property <string> text;
+    in property <bool> accent;
+    callback clicked();
+    height: 26px;
+    min-width: 34px;
+    border-radius: 4px;
+    background: root.accent ? T.accent : T.btn;
+    drop-shadow-blur: root.accent ? 12px : 0px;
+    drop-shadow-color: root.accent ? T.accent : #00000000;
+    Text { text: root.text; color: root.accent ? T.on-accent : T.text; font-size: 12px; font-weight: 700; }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+// Haut-parleur vu de face : cadre, suspension, cône et cache-poussière.
+component Speaker inherits Rectangle {
+    width: 200px;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: T.sp0;
+    border-width: 4px;
+    border-color: T.sp-edge;
+    Rectangle { width: parent.width * 0.84; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp1; border-width: 2px; border-color: T.sp-edge2; }
+    Rectangle { width: parent.width * 0.66; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp2; border-width: 1px; border-color: T.sp-edge3; }
+    Rectangle { width: parent.width * 0.48; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp1; border-width: 1px; border-color: T.sp-edge3; }
+    Rectangle { width: parent.width * 0.26; height: self.width; x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; border-radius: self.width / 2; background: T.sp0; border-width: 3px; border-color: T.sp-edge; }
+}
+
+// Façade d'ampli : deux haut-parleurs sous le tissu de la grille, liseré doré, plaque au nom de l'appli.
+component AmpGrille inherits Rectangle {
+    property <length> d: min(self.height - 40px, 230px);
+    background: T.grille;
+    border-radius: 10px;
+    border-width: 4px;
+    border-color: T.edge-dark;
+    clip: true;
+    Speaker { width: root.d; x: parent.width * 0.27 - self.width / 2; y: (parent.height - self.height) / 2; }
+    Speaker { width: root.d; x: parent.width * 0.73 - self.width / 2; y: (parent.height - self.height) / 2; }
+    // tissu de la grille (par-dessus les haut-parleurs, légèrement transparent)
+    for i in 260: Rectangle { x: i * 5px; width: 1px; background: T.mesh; }
+    for j in 80: Rectangle { y: j * 5px; height: 1px; background: T.mesh; }
+    Rectangle { x: 10px; y: 10px; width: parent.width - 20px; height: parent.height - 20px; border-radius: 6px; border-width: 2px; border-color: T.trim; }
+    Rectangle {
+        width: 200px;
+        height: 38px;
+        background: T.bg;
+        border-radius: 6px;
+        border-width: 2px;
+        border-color: T.accent;
+        Text { text: "GUITAR AMP"; color: T.accent; font-size: 18px; font-weight: 800; }
+    }
+    Btn {
+        width: 190px;
+        x: parent.width - self.width - 22px;
+        y: parent.height - self.height - 18px;
+        text: "♪ Ouvrir une tablature…";
+        clicked => { S.tab-load(); }
+    }
+}
+
+component TabView inherits Rectangle {
+    background: T.panel;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: T.panel-border;
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+        HorizontalLayout {
+            spacing: 6px;
+            height: 28px;
+            Text { text: S.tab-title; color: T.accent2; font-size: 14px; font-weight: 700; vertical-alignment: center; overflow: elide; max-width: 320px; }
+            ComboBox { model: S.tab-tracks; current-index <=> S.tab-track-sel; selected(i) => { S.tab-pick-track(S.tab-track-sel); } }
+            Btn { text: S.tab-playing ? "⏸ Pause" : "▶ Lecture"; accent: !S.tab-playing; min-width: 84px; clicked => { S.tab-toggle-play(); } }
+            Btn { text: "⏮"; clicked => { S.tab-restart(); } }
+            Btn { text: "◀"; clicked => { S.tab-step(-1); } }
+            Text { text: S.tab-measure; color: T.dim; vertical-alignment: center; min-width: 90px; horizontal-alignment: center; }
+            Btn { text: "▶"; clicked => { S.tab-step(1); } }
+            Rectangle { }
+            Btn { text: "Ouvrir…"; clicked => { S.tab-load(); } }
+            Btn { text: "Fermer"; clicked => { S.tab-close(); } }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            height: 26px;
+            Btn { text: S.tab-wait ? "✔ J'attends ma note" : "Attendre ma note"; accent: S.tab-wait; min-width: 160px; clicked => { S.tab-toggle-wait(); } }
+            Text { text: S.tab-wait-text; color: T.accent2; font-weight: 700; vertical-alignment: center; }
+            Rectangle { }
+            Text { text: "Vitesse"; color: T.dim; vertical-alignment: center; }
+            Btn { text: "−"; clicked => { S.tab-set-speed(S.tab-speed - 10); } }
+            Text { text: Math.round(S.tab-speed) + " %"; color: T.text; vertical-alignment: center; min-width: 44px; horizontal-alignment: center; }
+            Btn { text: "+"; clicked => { S.tab-set-speed(S.tab-speed + 10); } }
+        }
+        Rectangle {
+            background: T.canvas;
+            border-radius: 6px;
+            clip: true;
+            for s in S.tab-strings: Rectangle {
+                y: parent.height / (S.tab-strings + 1) * (s + 1);
+                height: 1px;
+                background: T.line;
+            }
+            for bx in S.tab-bars: Rectangle {
+                x: parent.width * bx;
+                y: parent.height / (S.tab-strings + 1) * 0.7;
+                width: 2px;
+                height: parent.height / (S.tab-strings + 1) * (S.tab-strings - 1 + 0.6);
+                background: T.faint;
+            }
+            Rectangle { x: parent.width * 0.125 - 1px; width: 2px; background: T.accent; }
+            for n in S.tab-notes: Rectangle {
+                x: parent.width * n.x - 10px;
+                y: parent.height / (S.tab-strings + 1) * (n.string + 1) - 10px;
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: n.state == 1 ? T.accent : T.canvas;
+                drop-shadow-blur: n.state == 1 ? 14px : 0px;
+                drop-shadow-color: n.state == 1 ? T.accent : #00000000;
+                Text {
+                    text: n.fret;
+                    color: n.state == 1 ? T.on-accent : (n.state == 0 ? T.line : T.text);
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Guitar Amp";
+    icon: @image-url("../assets/icon.png");
+    preferred-width: 1100px;
+    preferred-height: 950px;
+    min-width: 1050px;
+    min-height: 830px;
+    background: T.bg;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 10px;
+
+        // --- Barre du haut : périphériques
+        HorizontalLayout {
+            spacing: 10px;
+            height: 34px;
+            Image { source: @image-url("../assets/icon.png"); width: 34px; height: 34px; image-fit: contain; }
+            Text { text: "GUITAR AMP"; color: T.accent; font-size: 20px; font-weight: 800; vertical-alignment: center; }
+            Btn { text: "⚙ Paramètres"; min-width: 120px; height: 34px; clicked => { S.settings-open = true; } }
+            Rectangle { }
+            HorizontalLayout {
+                spacing: 6px;
+                width: 120px;
+                Rectangle {
+                    width: 12px;
+                    height: 12px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 6px;
+                    background: S.running ? #3fa34d : #e5484d;
+                }
+                Text { text: S.running ? "Audio actif" : "Audio arrêté"; color: T.dim; vertical-alignment: center; }
+            }
+        }
+
+        // --- Message d'état (périphériques utilisés, erreurs)
+        Text { text: S.status; color: T.text2; font-size: 12px; wrap: word-wrap; }
+
+        // --- Entrée / sortie
+        HorizontalLayout {
+            spacing: 14px;
+            Meter { label: "Entrée"; level: S.in-level; }
+            Meter { label: "Sortie"; level: S.out-level; }
+            Toggle { text: "MUET"; value: S.v.mute; changed(x) => { S.edit("mute", x); } width: 70px; }
+        }
+
+        // --- Pédales
+        HorizontalLayout {
+            spacing: 10px;
+            Panel {
+                title: "ENTRÉE / GATE";
+                on-value: S.v.gate-on;
+                toggled(x) => { S.edit("gate_on", x); }
+                Knob { label: "Entrée"; value: S.v.input; changed(x) => { S.edit("input", x); } }
+                Knob { lit: S.v.gate-on > 0.5; label: "Seuil"; value: S.v.gate-th; changed(x) => { S.edit("gate_th", x); } }
+                VerticalLayout {
+                    alignment: center;
+                    padding-left: 4px;
+                    Btn { text: "AUTO"; min-width: 52px; clicked => { S.auto-level(); } }
+                }
+            }
+            Panel {
+                title: "OVERDRIVE";
+                opacity: S.v.inst > 0.5 ? 0.3 : 1;
+                on-value: S.v.od-on;
+                toggled(x) => { S.edit("od_on", x); }
+                Knob { lit: S.v.od-on > 0.5; label: "Drive"; value: S.v.od-drive; changed(x) => { S.edit("od_drive", x); } }
+                Knob { lit: S.v.od-on > 0.5; label: "Tone"; value: S.v.od-tone; changed(x) => { S.edit("od_tone", x); } }
+                Knob { lit: S.v.od-on > 0.5; label: "Level"; value: S.v.od-level; changed(x) => { S.edit("od_level", x); } }
+            }
+            Panel {
+                title: "CHORUS";
+                on-value: S.v.ch-on;
+                toggled(x) => { S.edit("ch_on", x); }
+                Knob { lit: S.v.ch-on > 0.5; label: "Vitesse"; value: S.v.ch-rate; changed(x) => { S.edit("ch_rate", x); } }
+                Knob { lit: S.v.ch-on > 0.5; label: "Profond."; value: S.v.ch-depth; changed(x) => { S.edit("ch_depth", x); } }
+                Knob { lit: S.v.ch-on > 0.5; label: "Mix"; value: S.v.ch-mix; changed(x) => { S.edit("ch_mix", x); } }
+            }
+            Panel {
+                title: "DELAY";
+                on-value: S.v.dl-on;
+                toggled(x) => { S.edit("dl_on", x); }
+                Knob { lit: S.v.dl-on > 0.5; label: "Temps"; value: S.v.dl-time; changed(x) => { S.edit("dl_time", x); } }
+                Knob { lit: S.v.dl-on > 0.5; label: "Répét."; value: S.v.dl-fb; changed(x) => { S.edit("dl_fb", x); } }
+                Knob { lit: S.v.dl-on > 0.5; label: "Mix"; value: S.v.dl-mix; changed(x) => { S.edit("dl_mix", x); } }
+            }
+            Panel {
+                title: "REVERB";
+                on-value: S.v.rv-on;
+                toggled(x) => { S.edit("rv_on", x); }
+                Knob { lit: S.v.rv-on > 0.5; label: "Taille"; value: S.v.rv-size; changed(x) => { S.edit("rv_size", x); } }
+                Knob { lit: S.v.rv-on > 0.5; label: "Mix"; value: S.v.rv-mix; changed(x) => { S.edit("rv_mix", x); } }
+            }
+        }
+
+        // --- Instrument
+        Panel {
+            title: "INSTRUMENT";
+            height: 66px;
+            HorizontalLayout {
+                spacing: 6px;
+                for name[i] in ["Électrique + ampli", "Classique", "Folk", "Country jumbo", "Ukulélé", "Banjo"]: Rectangle {
+                    height: 26px;
+                    min-width: 100px;
+                    horizontal-stretch: 1;
+                    border-radius: 4px;
+                    background: Math.round(S.v.inst) == i ? T.accent : T.btn;
+                    drop-shadow-blur: Math.round(S.v.inst) == i ? 12px : 0px;
+                    drop-shadow-color: Math.round(S.v.inst) == i ? T.accent : #00000000;
+                    Text { text: name; color: Math.round(S.v.inst) == i ? T.on-accent : T.dim; font-weight: 700; font-size: 12px; }
+                    TouchArea { clicked => { S.edit("inst", i); } }
+                }
+            }
+        }
+
+        // --- Ampli / corps de l'instrument
+        Panel {
+            title: S.v.inst > 0.5 ? "SON ACOUSTIQUE" : "AMPLI";
+            HorizontalLayout {
+                spacing: 4px;
+                if S.v.inst < 0.5: VerticalLayout {
+                    spacing: 4px;
+                    padding-right: 10px;
+                    for name[i] in ["Clean", "Crunch", "Lead", "Metal"]: Rectangle {
+                        height: 26px;
+                        width: 80px;
+                        border-radius: 4px;
+                        background: Math.round(S.v.amp-model) == i ? T.accent : T.btn;
+                        drop-shadow-blur: Math.round(S.v.amp-model) == i ? 12px : 0px;
+                        drop-shadow-color: Math.round(S.v.amp-model) == i ? T.accent : #00000000;
+                        Text { text: name; color: Math.round(S.v.amp-model) == i ? T.on-accent : T.dim; font-weight: 700; }
+                        TouchArea { clicked => { S.edit("amp_model", i); } }
+                    }
+                }
+                if S.v.inst < 0.5: Knob { label: "Gain"; value: S.v.amp-gain; changed(x) => { S.edit("amp_gain", x); } }
+                if S.v.inst > 0.5: Knob { label: "Corps"; value: S.v.body; changed(x) => { S.edit("body", x); } }
+                Knob { label: "Basses"; value: S.v.bass; changed(x) => { S.edit("bass", x); } }
+                Knob { label: "Médiums"; value: S.v.mid; changed(x) => { S.edit("mid", x); } }
+                Knob { label: "Aigus"; value: S.v.treble; changed(x) => { S.edit("treble", x); } }
+                Knob { label: "Présence"; value: S.v.presence; changed(x) => { S.edit("presence", x); } }
+                Knob { label: "Master"; value: S.v.master; changed(x) => { S.edit("master", x); } }
+                if S.v.inst < 0.5: VerticalLayout {
+                    alignment: center;
+                    padding-left: 10px;
+                    Toggle { text: "BAFFLE"; value: S.v.cab-on; changed(x) => { S.edit("cab_on", x); } }
+                }
+            }
+        }
+
+        // --- Bas : accordeur, métronome, enregistrement, presets
+        HorizontalLayout {
+            spacing: 10px;
+            Panel {
+                title: "ACCORDEUR";
+                on-value: S.v.tuner-on;
+                toggled(x) => { S.edit("tuner_on", x); }
+                VerticalLayout {
+                    spacing: 4px;
+                    width: 225px;
+                    ComboBox {
+                        model: ["Standard (Mi La Ré Sol Si Mi)", "Demi-ton plus bas (Mi♭)", "Drop D (Ré La Ré Sol Si Mi)", "Drop C (Do Sol Do Fa La Ré)"];
+                        current-index <=> S.tuning;
+                        selected(i) => { S.tuning-changed(); }
+                    }
+                    HorizontalLayout {
+                        spacing: 3px;
+                        for name[i] in S.tuner-strings: Rectangle {
+                            height: 24px;
+                            border-radius: 4px;
+                            horizontal-stretch: 1;
+                            background: S.tuner-active == i ? T.accent : T.btn;
+                            border-width: S.tuner-lock == i ? 2px : 0px;
+                            border-color: T.text;
+                            drop-shadow-blur: S.tuner-active == i ? 12px : 0px;
+                            drop-shadow-color: S.tuner-active == i ? T.accent : #00000000;
+                            Text { text: name; color: S.tuner-active == i ? T.on-accent : T.dim; font-size: 12px; font-weight: 700; }
+                            TouchArea { clicked => { S.tuner-lock-string(i); } }
+                        }
+                    }
+                    Text {
+                        text: S.note;
+                        color: abs(S.cents) < 5 && S.note != "--" ? #7ccf5b : T.text;
+                        font-size: 24px;
+                        font-weight: 800;
+                        horizontal-alignment: center;
+                    }
+                    Rectangle {
+                        height: 14px;
+                        background: T.dark;
+                        border-radius: 3px;
+                        Rectangle { x: parent.width / 2 - 1px; width: 2px; background: T.line; }
+                        Rectangle {
+                            x: parent.width / 2 + clamp(S.cents, -50, 50) / 50 * parent.width / 2 - 3px;
+                            width: 6px;
+                            border-radius: 3px;
+                            background: abs(S.cents) < 5 ? #7ccf5b : T.accent;
+                        }
+                    }
+                    Text { text: S.hz; color: T.dim; horizontal-alignment: center; font-size: 11px; wrap: word-wrap; }
+                }
+            }
+            Panel {
+                title: "MÉTRONOME";
+                on-value: S.v.metro-on;
+                toggled(x) => { S.edit("metro_on", x); }
+                VerticalLayout {
+                    spacing: 6px;
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 2px;
+                        Knob { lit: S.v.metro-on > 0.5; label: "BPM"; minimum: 40; maximum: 220; value: S.v.metro-bpm; changed(x) => { S.edit("metro_bpm", Math.round(x)); } }
+                        Knob { lit: S.v.metro-on > 0.5; label: "Volume"; value: S.v.metro-vol; changed(x) => { S.edit("metro_vol", x); } }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        for i in 4: Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 8px;
+                            background: S.beat == i && S.v.metro-on > 0.5 ? (i == 0 ? T.accent : #7ccf5b) : T.dark;
+                            drop-shadow-blur: S.beat == i && S.v.metro-on > 0.5 ? 10px : 0px;
+                            drop-shadow-color: S.beat == i && S.v.metro-on > 0.5 ? (i == 0 ? T.accent : #7ccf5b) : #00000000;
+                        }
+                    }
+                }
+            }
+            Panel {
+                title: "ENREGISTREMENT";
+                VerticalLayout {
+                    spacing: 6px;
+                    width: 235px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Btn { text: "● Enreg."; accent: S.recording; min-width: 78px; clicked => { S.toggle-rec(); } }
+                        Btn { text: "▶ Lecture"; accent: S.playing; min-width: 78px; clicked => { S.play-recording(); } }
+                        Btn { text: "■ Stop"; min-width: 62px; clicked => { S.stop-all(); } }
+                    }
+                    Btn { text: S.loop-on ? "⟳ Boucle : OUI" : "⟳ Boucle : non"; accent: S.loop-on; clicked => { S.toggle-loop(); } }
+                    Text { text: S.rec-info; color: T.faint; font-size: 11px; wrap: word-wrap; }
+                }
+            }
+            Panel {
+                title: "PRESETS";
+                VerticalLayout {
+                    spacing: 6px;
+                    width: 230px;
+                    ComboBox { model: S.presets; current-index <=> S.preset-sel; selected(i) => { S.apply-preset(S.preset-sel); } }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        name-input := LineEdit { placeholder-text: "Nom du preset"; }
+                        Rectangle {
+                            width: 60px;
+                            border-radius: 5px;
+                            background: T.btn;
+                            Text { text: "Sauver"; color: T.text; font-size: 12px; }
+                            TouchArea { clicked => { S.save-preset(name-input.text); } }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Grille d'ampli (décor) ou lecteur de tablature
+        Rectangle {
+            vertical-stretch: 1;
+            min-height: 190px;
+            if !S.tab-shown: AmpGrille { }
+            if S.tab-shown: TabView { }
+        }
+    }
+    // Animation du thème Arc-en-ciel (≈ 15 s pour faire le tour des 6 couleurs)
+    Timer {
+        interval: 50ms;
+        running: S.theme == 5;
+        triggered => {
+            S.phase = S.phase + 0.02;
+            if (S.phase >= 6) {
+                S.phase = S.phase - 6;
+            }
+        }
+    }
+
+    // --- Menu Paramètres (périphériques audio)
+    if S.settings-open: Rectangle {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        background: #000000bb;
+        TouchArea { }
+        Rectangle {
+            width: min(600px, parent.width - 40px);
+            height: 640px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: T.panel;
+            border-radius: 10px;
+            border-width: 2px;
+            border-color: T.accent;
+            VerticalLayout {
+                padding: 18px;
+                spacing: 6px;
+                HorizontalLayout {
+                    Text { text: "Paramètres audio"; color: T.accent; font-size: 18px; font-weight: 800; vertical-alignment: center; }
+                    Rectangle { }
+                    Btn { text: "✕"; clicked => { S.settings-open = false; } }
+                }
+                Text { text: "Entrée (ta guitare : câble jack USB, interface...)"; color: T.text2; font-size: 12px; }
+                ComboBox { model: S.devs-in; current-index <=> S.in-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Sortie principale (haut-parleurs, casque...)"; color: T.text2; font-size: 12px; }
+                ComboBox { model: S.devs-out; current-index <=> S.out-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Sortie supplémentaire : le son sort aussi ici (par ex. prise jack casque)"; color: T.text2; font-size: 12px; wrap: word-wrap; }
+                ComboBox { model: S.devs-out2; current-index <=> S.out2-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Thème de l'interface"; color: T.text2; font-size: 12px; }
+                HorizontalLayout {
+                    spacing: 6px;
+                    height: 28px;
+                    Btn { text: "Ambre"; accent: S.theme == 0; clicked => { S.theme = 0; S.theme-changed(); } }
+                    Btn { text: "Chrome"; accent: S.theme == 1; clicked => { S.theme = 1; S.theme-changed(); } }
+                    Btn { text: "Rock"; accent: S.theme == 2; clicked => { S.theme = 2; S.theme-changed(); } }
+                    Btn { text: "Vert"; accent: S.theme == 3; clicked => { S.theme = 3; S.theme-changed(); } }
+                    Btn { text: "Bleu"; accent: S.theme == 4; clicked => { S.theme = 4; S.theme-changed(); } }
+                    Btn { text: "Arc-en-ciel"; accent: S.theme == 5; min-width: 96px; clicked => { S.theme = 5; S.theme-changed(); } }
+                }
+                Text { text: "Taille du buffer (plus petit = moins de retard, mais risque de craquements)"; color: T.text2; font-size: 12px; wrap: word-wrap; }
+                ComboBox { model: ["64", "128", "256", "512"]; current-index <=> S.buffer-sel; selected(i) => { S.settings-changed(); } }
+                Text { text: "Dossier des enregistrements"; color: T.text2; font-size: 12px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text { text: S.rec-dir; color: T.dim; font-size: 11px; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; }
+                    Btn { text: "Choisir…"; min-width: 90px; clicked => { S.pick-rec-dir(); } }
+                }
+                Text {
+                    text: "Les changements s'appliquent tout de suite et sont mémorisés. Un câble guitare USB est repéré tout seul, et le son suit si tu changes de casque.";
+                    color: T.faint;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+                Rectangle { }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Btn { text: "↻ Actualiser les périphériques"; min-width: 220px; clicked => { S.refresh-devices(); } }
+                    Rectangle { }
+                    Btn { text: "Fermer"; accent: true; min-width: 90px; clicked => { S.settings-open = false; } }
+                }
+            }
+        }
+    }
+}

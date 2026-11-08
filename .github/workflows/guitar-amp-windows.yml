@@ -1,0 +1,32 @@
+name: Installateur Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/guitar-amp-effects-app-ev7ytw]
+    paths: ['guitar-amp/**', '.github/workflows/guitar-amp-windows.yml']
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: guitar-amp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: guitar-amp
+      - name: Tests
+        run: cargo test --release
+      - name: Build
+        run: cargo build --release
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Installateur
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\guitar-amp.iss'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GuitarAmp-Setup
+          path: guitar-amp/installer/Output/GuitarAmp-Setup.exe
